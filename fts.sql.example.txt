@@ -1,0 +1,65 @@
+--
+--Para ver el espacio a nivel Tablespace
+--
+SQL> sta fts
+
+
+========== [ Tablespaces / Space Usage ] ==========
+
+Columnas a seleccionar? tablespace_name,file_name [tablespace_name]:
+Sentencia WHERE? contents tablespace_name [1=1]:
+
+                                          Allocated Allocated Allocated        Maximum   Maximum   Maximum
+Type       Tablespace                     Size      FreeSpace Used %           Size      FreeSpace Used %
+---------- ------------------------------ --------- --------- ---------------- --------- --------- ----------------
+PERMANENT  SYSTEM                            700.0M    428.0M [###_______].39%     32.0G     31.7G [__________]..1%
+           SYSAUX                            600.0M    402.0M [###_______].33%     32.0G     31.8G [__________]..1%
+           USERS                               5.0M      4.0M [##________].20%     32.0G     32.0G [__________]..0%
+
+
+TEMPORARY  TEMP                               20.0M     20.0M [__________]..0%     32.0G     32.0G [__________]..0%
+
+
+UNDO       UNDOTBS1                          205.0M    193.0M [__________]..6%     32.0G     32.0G [__________]..0%
+
+
+--
+--Para ver el espacio a nivel de Datafile
+--
+SQL> sta fts
+
+
+========== [ Tablespaces / Space Usage ] ==========
+
+Columnas a seleccionar? tablespace_name,file_name [tablespace_name]: tablespace_name,file_name
+Sentencia WHERE? contents tablespace_name [1=1]:
+
+                                          File                                                                   Allocated Allocated Allocated        Maximum   Maximum   Maximum
+Type       Tablespace                     Name                                                                   Size      FreeSpace Used %           Size      FreeSpace Used %
+---------- ------------------------------ ---------------------------------------------------------------------- --------- --------- ---------------- --------- --------- ----------------
+PERMANENT  SYSTEM                         /data2/system01.dbf                                                       700.0M    428.0M [###_______].39%     32.0G     31.7G [__________]..1%
+           SYSAUX                         /data1/sysaux01.dbf                                                       600.0M    402.0M [###_______].33%     32.0G     31.8G [__________]..1%
+           USERS                          /data1/users01.dbf                                                          5.0M      4.0M [##________].20%     32.0G     32.0G [__________]..0%
+
+
+TEMPORARY  TEMP                           /data2/temp01.dbf                                                          20.0M     20.0M [__________]..0%     32.0G     32.0G [__________]..0%
+
+
+UNDO       UNDOTBS1                       /data2/undotbs01.dbf                                                      205.0M    193.0M [__________]..6%     32.0G     32.0G [__________]..0%
+
+
+--
+--Se puede aplicar filtros
+--
+SQL> sta fts
+
+
+========== [ Tablespaces / Space Usage ] ==========
+
+Columnas a seleccionar? tablespace_name,file_name [tablespace_name]:
+Sentencia WHERE? contents tablespace_name [1=1]: tablespace_name='USERS'
+
+                                          Allocated Allocated Allocated        Maximum   Maximum   Maximum
+Type       Tablespace                     Size      FreeSpace Used %           Size      FreeSpace Used %
+---------- ------------------------------ --------- --------- ---------------- --------- --------- ----------------
+PERMANENT  USERS                               5.0M      4.0M [##________].20%     32.0G     32.0G [__________]..0%
