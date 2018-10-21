@@ -1,0 +1,40 @@
+--
+--Mostrando con la informacion por defecto
+--
+SQL> @events
+Columnas a seleccionar? [identifier,username,osuser,machine,program,sql_id]:
+Sentencia WHERE? sql_id username osuser machine program [1=1]:
+
+WAITING_ACTIVE            EVENT                                    IDENTIFIER        USERNAME        OSUSER     MACHINE                   PROGRAM         SQL_ID
+------------------------- ---------------------------------------- ----------------- --------------- ---------- ------------------------- --------------- ------------------------------
++00 00:00:00 +00 00:00:00 SQL*Net message to client                1,1137@1          SYS             oracle     oracle-server             sqlplus(TNS V1- 82uzgm4pgr5z2
+                          ----------------------------------------
+                                                                 1
+
+
+--
+--Mostrando columnas deseadas
+--
+SQL> @events
+Columnas a seleccionar? [identifier,username,osuser,machine,program,sql_id]: identifier,username,sql_id
+Sentencia WHERE? sql_id username osuser machine program [1=1]:
+
+WAITING_ACTIVE            EVENT                                    IDENTIFIER        USERNAME        SQL_ID
+------------------------- ---------------------------------------- ----------------- --------------- ------------------------------
++00 00:00:00 +00 00:00:00 SQL*Net message to client                1,1137@1          SYS             fdft40xqbrmy5
+                          ----------------------------------------
+                                                                 1
+
+
+--
+--Aplicando filtros
+--
+SQL> @events
+Columnas a seleccionar? [identifier,username,osuser,machine,program,sql_id]:
+Sentencia WHERE? sql_id username osuser machine program [1=1]: username='SYS'
+
+WAITING_ACTIVE            EVENT                                    IDENTIFIER        USERNAME        OSUSER     MACHINE                   PROGRAM         SQL_ID
+------------------------- ---------------------------------------- ----------------- --------------- ---------- ------------------------- --------------- ------------------------------
++00 00:00:00 +00 00:00:00 SQL*Net message to client                1,1137@1          SYS             oracle     oracle-server             sqlplus(TNS V1- ancj5axfa974q
+                          ----------------------------------------
+                                                                 1
