@@ -1,0 +1,12 @@
+SQL> @control
+
+
+========== [ Controlfiles ] ==========
+
+
+STATUS   NAME                                                                             CSIZE   IN_FRA
+-------- -------------------------------------------------------------------------------- ------- ------
+IN USE   /redo1/control01.ctl                                                             9.3M    NO
+IN USE   /redo2/control02.ctl                                                             9.3M    NO
+
+2 rows selected.

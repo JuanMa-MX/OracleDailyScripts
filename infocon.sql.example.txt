@@ -1,0 +1,27 @@
+SQL> @infocon
+
+INFO_DE_CONEXION
+----------------------------------------------------------------------------------------------------
+RDBMS         : Oracle Database 11g Enterprise Edition Release 11.2.0.1.0 - 64bit Production
+
+Conectado como: SYS
+Esquema actual: SYS
+
+Instancia     : ora11ga
+Version       : 11.2.0.1.0
+Iniciada desde: 20-OCT-2018 14:24
+Logins        : ALLOWED
+Rol           : PRIMARY_INSTANCE
+Servidor      : oracle-server
+Plataforma    : Linux x86 64-bit
+
+Base de Datos : ORA11GA
+Creada desde  : 11-SEP-2018
+Open Mode     : READ WRITE
+Rol           : PRIMARY
+Modo Archive  : ARCHIVELOG
+Force Logging : NO
+Flashback On? : YES
+
+
+1 row selected.

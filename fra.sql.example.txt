@@ -1,0 +1,54 @@
+SQL> @fra
+
+
+========== [ Is Archived Redo Log Configured ] ==========
+
+
+ARC
+---
+YES
+
+1 row selected.
+
+
+
+========== [ Is Flashback Configured ] ==========
+
+
+FLASHBACK_ON
+------------------
+YES
+
+1 row selected.
+
+
+VALUE
+------------------------------------------------------------
+db_flashback_retention_target=1440 (minutes)
+
+1 row selected.
+
+
+
+========== [ FRA Information ] ==========
+
+
+NAME                                               SPACE_LIMIT_MB SPACE_USED_MB   PCT_USED SPACE_RECLAIMABLE
+-------------------------------------------------- -------------- ------------- ---------- -----------------
+/archive                                                    10240            15          0                 0
+
+1 row selected.
+
+
+FILE_TYPE            PERCENT_SPACE_USED PERCENT_SPACE_RECLAIMABLE NUMBER_OF_FILES
+-------------------- ------------------ ------------------------- ---------------
+CONTROL FILE                          0                         0               0
+REDO LOG                              0                         0               0
+ARCHIVED LOG                          0                         0               0
+BACKUP PIECE                          0                         0               0
+IMAGE COPY                            0                         0               0
+FLASHBACK LOG                       .15                         0               1
+FOREIGN ARCHIVED LOG                  0                         0               0
+
+7 rows selected.
+

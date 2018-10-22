@@ -1,0 +1,13 @@
+SQL> @redom
+
+
+========== [ Redo Log Members ] ==========
+
+
+   THREAD#     GROUP# MEMBER                                                       STATUS   TYPE    IN_FRA
+---------- ---------- ------------------------------------------------------------ -------- ------- ------
+         1          1 /redo1/redo01a.rdo                                           IN USE   ONLINE  NO
+         1          2 /redo2/redo02a.rdo                                           IN USE   ONLINE  NO
+         1          3 /redo3/redo03a.rdo                                           IN USE   ONLINE  NO
+
+3 rows selected.
