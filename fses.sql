@@ -1,12 +1,13 @@
---        Nombre:
+--        Nombre: fses.sql
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
+--   Descripcion: Muestra informacion de conexion de una sesion en especifico
+--           Uso: @fses ENTER
+--                Sentencia WHERE? sid spid [1=1]:
+--Requerimientos: Acceso a v$instance, [g]v$session, [g]v$process, v$sql
+--Licenciamiento: Ninguno
+--        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 SET DEFINE ON
 SET VERIFY OFF

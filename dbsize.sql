@@ -1,12 +1,12 @@
---        Nombre:
+--        Nombre: dbsize.sql
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
+--   Descripcion: Muestra el tamanio de la Base de Datos por Tipo de Archivo y por Esquema
+--           Uso: @dbsize ENTER
+--Requerimientos: Acceso a v$log, v$log_file, v$datafile, v$tempfile, dba_segments
+--Licenciamiento: Ninguno
+--        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 SET LINES 200
 SET PAGES 1000

@@ -1,12 +1,12 @@
---        Nombre:
+--        Nombre: infocon.sql
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
+--   Descripcion: Muestra informacion de la sesion establecida y Base de Datos
+--           Uso: @infocon ENTER
+--Requerimientos: Acceso a v$instance, v$database, v$version
+--Licenciamiento: Ninguno
+--        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 SET LINES 100
 SET PAGES 1000

@@ -3,10 +3,10 @@
 --   Descripcion: Muestra informacion de la Fast Recovery Area
 --           Uso: @fra ENTER 
 --Requerimientos: Acceso a v$database, v$parameter, v$recovery_file_dest, v$recovery_area_usage
---Licenciamiento:
---        Creado:
+--Licenciamiento: Ninguno
+--        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 SET lines 200
 SET pages 1000
