@@ -1,0 +1,33 @@
+SQL> @datafiles
+
+
+==================== [ Datafiles ] ====================
+
+Sentencia WHERE? t.name [1=1]:
+
+     TS# TBS_NAME                       DBF_SIZE      FILE# DBF_NAME
+-------- ------------------------------ ---------- -------- ------------------------------------------------------------
+       0 SYSTEM                         700M              1 /data2/system01.dbf
+       1 SYSAUX                         600M              2 /data1/sysaux01.dbf
+       2 UNDOTBS1                       205M              3 /data2/undotbs01.dbf
+       4 USERS                          5M                4 /data1/users01.dbf
+
+4 rows selected.
+
+
+--
+--Ejemplo de filtro por Nombre de Tablespace
+--
+
+SQL> @datafiles
+
+
+==================== [ Datafiles ] ====================
+
+Sentencia WHERE? t.name [1=1]: t.name='USERS'
+
+     TS# TBS_NAME                       DBF_SIZE      FILE# DBF_NAME
+-------- ------------------------------ ---------- -------- ------------------------------------------------------------
+       4 USERS                          5M                4 /data1/users01.dbf
+
+1 row selected.

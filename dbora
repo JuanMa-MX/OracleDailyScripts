@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# chkconfig: 35 99 10   
+# description: Starts and stops Oracle processes
+#
+# Set ORA_HOME to be equivalent to the $ORACLE_HOME
+# from which you wish to execute dbstart and dbshut;
+#
+# Set ORA_OWNER to the user id of the owner of the
+# Oracle database in ORA_HOME.
+# 
+ 
+ORA_HOME="/prog/runc/";
+ORA_OWNER="";
+
+ORATAB=/etc/oratab;
+
+verificaORATAB
+{
+codigo=0;
+
+   if [ ! ${ORATAB} ];
+   then
+      codigo=1;
+   fi
+
+return ${codigo};
+}
+
+
+verificaUsuarios
+{
+codigo=0;
+
+USER1=$(/usr/bin/id -u oracle   2> /dev/null);
+USER2=$(/usr/bin/id -u prhtorac 2> /dev/null);
+
+if [ "X${USER1}" != "X" ];
+then
+   ORA_OWNER="oracle";
+else
+   if [ "X${USER2}" != "X" ];
+   then
+      ORA_OWNER="prhtorac";
+   else
+      codigo=1;
+   fi
+fi
+return ${codigo};
+}
+
+
+
+################################################################################
+##############   Principal
+################################################################################
+
+verificaORATAB;
+if [ $? = 1 ];
+then 
+   echo "No se encontro el archivo ${ORATAB}";
+   exit 1;
+fi
+
+verificaUsuarios;
+if [ $? = 1 ];
+then 
+   echo "No se encontraron usuarios validos: oracle, prhtorac";
+   exit 1;
+fi
+
+
+case "$1" in
+'start')
+  # Start the Oracle databases:
+  # The following command assumes that the oracle login
+  # will not prompt the user for any values
+  su - $ORA_OWNER -c $ORA_HOME/dbstart
+
+  touch /var/lock/subsys/dbora
+  ;;
+
+'stop')
+  # Stop the Oracle databases:
+  # The following command assumes that the oracle login
+  # will not prompt the user for any values
+  su - $ORA_OWNER -c $ORA_HOME/dbstop
+
+  rm -f /var/lock/subsys/dbora
+  ;;
+esac
+
+# End of script dbora

@@ -1,12 +1,13 @@
---        Nombre:
+--        Nombre: datafiles.sql
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
+--   Descripcion: Muestra los Datafiles de la Base de Datos
+--           Uso: @datafiles ENTER
+--                Sentencia WHERE? t.name [1=1]:
+--Requerimientos: Acceso a v$tablespace, v$datafile
+--Licenciamiento: Ninguno
+--        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 PROMPT
 PROMPT

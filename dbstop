@@ -1,0 +1,161 @@
+#!/bin/bash
+
+#--------------------------------------------------------------------------------#
+
+function obtenerListadoDeBasesDeDatos()
+{
+   listaDeBases=$(grep -Ev "^$|#" ${ORATAB} | grep ".*:.*:Y$" | cut -d":" -f1 | xargs);
+   echo ${listaDeBases};
+}
+
+#--------------------------------------------------------------------------------#
+
+function ORAENV()
+{
+   export ORACLE_SID="${1}";
+   export ORAENV_ASK="NO";
+   . oraenv -s &> /dev/null;
+   export ORAENV_ASK="YES";
+   export LD_LIBRARY_PATH=${ORACLE_HOME}/lib;
+   export TNS_ADMIN=${ORACLE_HOME}/network/admin;
+}
+
+#--------------------------------------------------------------------------------#
+
+function obtenerEstadoDeBaseDeDatos()
+{
+   ESTADO=$(sqlplus -S / AS SYSDBA <<_script_
+SET FEEDBACK OFF
+SET PAGES 0
+SET HEADING OFF
+
+SELECT status FROM v\$instance;
+
+EXIT;
+_script_
+);
+
+   case "${ESTADO}" in
+   "STARTED"|"MOUNTED"|"OPEN")
+      echo "${ESTADO}";
+   ;;
+   *)
+      echo "UNKNOWN";
+   ;;
+   esac
+}
+
+#--------------------------------------------------------------------------------#
+
+function detenerBaseDeDatos()
+{
+   sqlplus -S &> /dev/null <<_script_
+CONNECT / AS SYSDBA
+
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+
+SHUTDOWN IMMEDIATE;
+
+EXIT;
+_script_
+}
+
+#--------------------------------------------------------------------------------#
+
+function detieneBaseDeDatos()
+{
+   for base in $(obtenerListadoDeBasesDeDatos)
+   do
+      ORAENV "${base}";
+      detenerBaseDeDatos;
+
+      ESTADO="$(obtenerEstadoDeBaseDeDatos)";
+
+      case "${ESTADO}" in
+      "STARTED"|"MOUNTED"|"OPEN")
+         echo "[ERROR] Error al detener la Base de Datos '${base}'.";
+      ;;
+      *)
+         echo "[OK] Base de Datos '${base}' detenida correctamente.";
+      ;;
+      esac
+   done
+}
+
+#--------------------------------------------------------------------------------#
+
+function obtenerListadoListeners()
+{
+   LISTENER=${TNS_ADMIN}/listener.ora;
+   listaDeListeners=$(sed -e 's/=/\n/g' ${LISTENER} | sed -e 's/ //g' | \
+                      grep -i "^listener" | grep -iv ".log" | \
+                      grep -vw "LISTENER" | awk '{print toupper($0)}');
+   echo ${listaDeListeners};
+}
+
+#--------------------------------------------------------------------------------#
+
+function obtenerEstadoDeListener()
+{
+   if [ $(ps -ef | grep "tnslsnr" | grep -icw ${1}) -eq 1 ];
+   then
+      echo "ACTIVE";
+   else
+      echo "INACTIVE";
+   fi
+}
+
+#--------------------------------------------------------------------------------#
+
+function detieneListener()
+{
+   lsnrctl stop ${1} &> /dev/null
+
+   if [ "$(obtenerEstadoDeListener "${1}")" == "INACTIVE" ];
+   then
+      echo "OK";
+   else
+      echo "ERROR";
+   fi
+}
+
+#--------------------------------------------------------------------------------#
+
+function detieneListeners()
+{
+   for base in $(obtenerListadoDeBasesDeDatos)
+   do
+      ORAENV "${base}";
+
+      for listener in $(obtenerListadoListeners)
+      do
+         if [ "$(detieneListener "${listener}")" == "OK" ];
+         then
+            echo "[OK] Listener '${listener}' detenido correctamente.";
+         else
+            echo "[ERROR] Error al detener el Listener '${listener}'.";
+         fi
+      done
+   done
+}
+
+#--------------------------------------------------------------------------------#
+
+function main()
+{
+ORATAB="/etc/oratab";
+
+echo "";
+echo "#--------------------------------------------------------------------------------#";
+date;
+echo "";
+echo ">> Bases de Datos";
+detieneBaseDeDatos;
+echo "";
+echo ">> Listeners";
+detieneListeners;
+}
+
+#--------------------------------------------------------------------------------#
+
+main;

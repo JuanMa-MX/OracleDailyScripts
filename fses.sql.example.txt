@@ -1,0 +1,37 @@
+SQL> @fses
+
+--
+--Se puede hacer filtro por sid o por spid
+--
+
+==================== [ Session Info ] ====================
+
+Sentencia WHERE? sid spid [1=1]: sid=29
+
+INFO_SESSION
+--------------------------------------------------------------------------------
+IDENTIFIER  : 29,278,@1
+LOGON TIME  : 2018-OCT-21 18:49:31
+STATUS      : INACTIVE
+USERNAME    : SYSTEM
+SCHEMA      : SYSTEM
+OSUSER      : oracle
+MODULE      : sqlplus@oracle-server (TNS V1-V3)
+ACTION      : SYSTEM
+CLIENT INFO :
+PROGRAM     : sqlplus@oracle-server (TNS V1-V3)
+SPID        : 4752
+MACHINE     : oracle-server
+TYPE        : USER
+TERMINAL    : pts/2
+CPU         :
+ELAPSED_TIME:
+BUFFER_GETS :
+SQL_ID      :
+CHILD_NUM   :
+START_TIME  :
+SQL_TEXT    :
+--------------------------------------------------------------------------------
+
+
+1 row selected.
