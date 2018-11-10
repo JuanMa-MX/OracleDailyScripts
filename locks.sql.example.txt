@@ -1,0 +1,20 @@
+SQL> sta locks
+
+MAX_TIME      CNT SQLID_CHILD      USERNAME_SID_SERIAL       EVENT_BLOCKER_BLOCKED                    PROGRAM         MACHINE
+------------ ---- ---------------- ------------------------- ---------------------------------------- --------------- -------------------------
++00 01:15:08    3 3ycfzf65mn078 0  USER0001[360,267]         +enq: TX - row lock contention           JDBC Thin Clien MACHINE01
+                                                               -enq: TX - row lock contention
+
++00 01:19:38    2                  USER0005[93,10755]        +SQL*Net message from client             SQL Developer   MACHINE01-LAP
+                                                               -enq: TX - row lock contention
+
+-- La lectura de la salida es de abajo hacia arriba, ya que esta ordenada por MAX_TIME ASC
+--
+-- La sesion USER0005[93,10755] tiene bloqueadas a 2 sesiones, de las cuales, su evento de espera es enq: TX - row lock contention
+-- y la sesion con mayor tiempo de espera en el bloqueo, lleva 1 hora con 19 minutos y 38 segundos (+00 01:19:38)
+--
+-- La sesion USER0001[360,267] tiene bloqueadas a 3 sesiones, de las cuales, su evento de espera es enq: TX - row lock contention
+-- y la sesion con mayor tiempo de espera en el bloqueo, lleva 1 hora con 15 minutos y 08 segundos (+00 01:15:08)
+--
+-- Por lo tanto, el primer bloqueo que hay que atender es el que posee la sesion USER0005[93,10755], la cual no esta
+-- haciendo algo, ya que su evento de espera es SQL*Net message from client
