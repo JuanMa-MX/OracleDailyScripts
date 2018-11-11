@@ -56,6 +56,18 @@ function ExisteArchivo()
 
 #--------------------------------------------------------------------------------#
 
+function ExisteDirectorio()
+{
+   if [ -d "${1}" ];
+   then
+      echo "S";
+   else
+      echo "N";
+   fi
+}
+
+#--------------------------------------------------------------------------------#
+
 function INSTANCE_STATUS()
 {
    EstadoBD="$(sqlplus -S /NOLOG <<_codigo_
@@ -204,7 +216,7 @@ function VerificaParametroBD()
       [ "${valorActual}" = "${valorEsperado}" ] && etiqueta="[ OK  ]" || etiqueta="[ERROR]";
    fi
 
-   if [ -z "${valorActual}" ];
+   if [ "$(EsValorNulo "${valorActual}")" = "S" ];
    then
       valorActual="No configurado";
    fi
@@ -351,7 +363,7 @@ function ComplianceFileSystems()
 
    fsCC="$(ls -l / | awk '{print $9}' | grep -E "^ccontrol$|^cloudcontrol$")";
 
-   if [ -z "${fsCC}" ];
+   if [ "$(EsValorNulo "${fsCC}")" = "S" ];
    then
       fsCC="cloudcontrol";
    fi
@@ -454,7 +466,7 @@ function ORAENV()
    for SUBDIR in $(ls -l ${ORACLE_BASE} | grep "^d" | awk '{print $9}')
    do
       OH="${ORACLE_BASE}/${SUBDIR}";
-      if [ -d "${OH}/bin" ];
+      if [ "$(ExisteDirectorio "${OH}/bin")" = "S" ];
       then
          export ORACLE_HOME="${OH}";
          export LD_LIBRARY_PATH="${ORACLE_HOME}/lib";
@@ -484,7 +496,7 @@ function ValorParametroListener()
                        grep -i "^${lPARAMETRO_LISTENER}_${lNOMBRE_LISTENER}=.*$" | \
                        awk -F"=" '{print $2}')";
 
-echo "$([ -z "${lVALOR_PARAMETRO}" ] && echo "PARAMETER_NOT_FOUND" || echo "${lVALOR_PARAMETRO}")";
+echo "$([ "$(EsValorNulo "${lVALOR_PARAMETRO}")" = "S" ] && echo "PARAMETER_NOT_FOUND" || echo "${lVALOR_PARAMETRO}")";
 }
 
 #--------------------------------------------------------------------------------#
@@ -501,10 +513,25 @@ function VerificaParametroDeListener()
    etiqueta="[ OK  ]";
 
    case "${iNombreDeParametroDeListener}" in
+      "IS_ACTIVE")
+         etiqueta="[ OK  ]";
+
+         procId="$(ps -ef | grep -w "tnslsnr" | grep -iw "${iNombreDeListener}" | awk '{print $2}')";
+
+         if [ "$(EsValorNulo "${procId}")" = "S" ];
+         then
+            etiqueta="[ERROR]";
+            valorActual="No[PORT=UNKNOWN]";
+         else
+            puertoListener="$(netstat -tulpn 2>/dev/null | awk '/'${procId}'\/tnslsnr/{print $4}' | cut -d":" -f2)";
+            valorActual="Si[PORT=${puertoListener}]";
+         fi
+         printf "%s %-87s %-20s\n" "${etiqueta}" "Listener activo?" "${valorActual}";
+      ;;
       "ADR_BASE")
          etiqueta="[ OK  ]";
 
-         if ! [ -d "${valorActual}" ]; then etiqueta="[ERROR]"; fi
+         if [ "$(ExisteDirectorio "${valorActual}")" = "N" ]; then etiqueta="[ERROR]"; fi
 
          if [ "${etiqueta}" = "[ OK  ]" ];
          then
@@ -519,7 +546,7 @@ function VerificaParametroDeListener()
          etiqueta="[ OK  ]";
          enDBTRAC="$(echo "${valorActual}" | grep "${dbtrac}")";
 
-         if [ -z "${enDBTRAC}" ]; then etiqueta="[ERROR]"; fi
+         if [ "$(EsValorNulo "${enDBTRAC}")" = "S" ]; then etiqueta="[ERROR]"; fi
 
          if [ "${etiqueta}" = "[ OK  ]" ];
          then
@@ -567,6 +594,7 @@ function ComplianceListeners()
       echo "";
       echo "Listener: ${currListener}";
       echo "";
+      VerificaParametroDeListener "${currListener}" "IS_ACTIVE"          ""
       VerificaParametroDeListener "${currListener}" "ADMIN_RESTRICTIONS" "ON"
       VerificaParametroDeListener "${currListener}" "DIAG_ADR_ENABLED"   "ON"
       VerificaParametroDeListener "${currListener}" "LOGGING"            "ON"
@@ -609,7 +637,7 @@ function VerificaLimiteDeProfile()
 
    [ "${valorActual}" = "${valorEsperado}" ] && etiqueta="[ OK  ]" || etiqueta="[ERROR]";
 
-   if [ -z "${valorActual}" ];
+   if [ "$(EsValorNulo "${valorActual}")" = "S" ];
    then
       valorActual="PROFILE_NOT_FOUND";
    fi
@@ -759,4 +787,4 @@ function main()
 
 #--------------------------------------------------------------------------------#
 
-main "${@}" 2>&1 | tee ORA-COMPLIANCE-$(hostname -s)-${1}.log
+main "${@}" 2>&1 | tee /prog/log/ORA-COMPLIANCE-$(hostname -s)-${1}.log

@@ -341,7 +341,7 @@ return tareas_tnsnames;
 function generaLISTENER(idx)
 {
    //Plantillas de Listener
-   var plantilla_crea_dir_listener = "mkdir -p /dbtrac01-:fs_name:/adr_listener_:instance_name:_dg";
+   var plantilla_crea_dir_listener = "mkdir -p /dbtrac01-:fs_name:/listener";
 
    var plantilla_entrada_listener = "LISTENER_:instance_name_upper:_DG=<br />" +
    "(address=(protocol=tcp)(host=0.0.0.0)(port=:port:))<br /><br />" +
@@ -349,7 +349,7 @@ function generaLISTENER(idx)
    "(sid_list=(sid_desc=(sid_name=:instance_name:)(oracle_home=${ORACLE_HOME})))<br /><br />" +
    "admin_restrictions_listener_:instance_name:_dg=on<br />" +
    "diag_adr_enabled_listener_:instance_name:_dg=on<br />" +
-   "adr_base_listener_:instance_name:_dg=/dbtrac01-:fs_name:/adr_listener_:instance_name:_dg<br />" +
+   "adr_base_listener_:instance_name:_dg=/dbtrac01-:fs_name:/listener<br />" +
    "logging_listener_:instance_name:_dg=on<br />" +
    "trace_level_listener_:instance_name:_dg=off<br />" +
    "trace_timestamp_listener_:instance_name:_dg=true<br />";
@@ -369,7 +369,7 @@ function generaLISTENER(idx)
    tareas_listener += "<li><b>Creación de Carpeta ADR del Listener</b><br /><br /><div>";
    var
    crea_dir_listener = plantilla_crea_dir_listener.replace(/:fs_name:/g,fs_name);
-   crea_dir_listener = crea_dir_listener.replace(/:instance_name:/g,instance_name);
+   //crea_dir_listener = crea_dir_listener.replace(/:instance_name:/g,instance_name);
    //crea_dir_listener = crea_dir_listener.replace(/:db_unique_name:/g,db_unique_name);
    
    tareas_listener += crea_dir_listener;
