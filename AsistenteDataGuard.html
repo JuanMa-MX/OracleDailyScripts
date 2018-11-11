@@ -1,0 +1,883 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body
+{
+   font-family: "Trebuchet MS";
+}
+
+p
+{
+   font-size: 12px;
+}
+td, th
+{
+   text-align:left;
+   vertical-align: top;
+   padding: 2px;
+}
+
+th
+{
+   background-color:#d1e0e0;
+   color: #293d3d;
+   font-family: "Trebuchet MS";
+   font-size: 14px;
+}
+
+td b
+{
+   font-family: "Trebuchet MS";
+   font-size: 12px;
+}
+
+table#tab_info_base td
+{
+   font-size: 12px;
+}
+
+table#tab_lista_bases th
+{
+   font-size: 12px;
+}
+
+table#tab_lista_bases, table#tab_lista_bases td
+{
+   border: 1px dotted #d1e0e0;
+}
+
+table#tab_configuracion th
+{
+   font-size: 14px;
+   text-align: center;
+}
+
+table#tab_configuracion td h1
+{
+   font-family: "Trebuchet MS";
+   font-size: 16px;
+}
+
+table#tab_configuracion, table#tab_configuracion td
+{
+   border: 1px dotted #d1e0e0;
+}
+table#tab_configuracion td
+{
+   font-family: Consolas;
+   font-size: 12px;
+}
+
+input[type="button"]
+{
+    cursor: pointer;
+	border-radius: 12px;
+	font-family: "Trebuchet MS";
+	font-size: 12px;
+	padding:2px;
+	width:120px;
+	margin: 4px;
+}
+
+input[type="button"]:hover
+{
+   background-color: #33334d;
+   color: white;
+}
+
+input[type="text"],input[type="number"]
+{
+   font-family: Consolas;
+   font-size: 12px;
+   text-transform: lowercase;
+}
+td div:hover
+{
+   background-color: #d1e0e0;
+}
+</style>
+<script type="text/javascript">
+var db_name = "";
+var db_block_size = 0;
+var sufijo_dg = "_";
+
+function configuraDatosOcultos()
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   document.getElementById("h_db_name").value = document.getElementById("i_db_name").value.toLowerCase();
+
+   document.getElementById("h_db_block_size").value = document.getElementById("i_db_block_size").value;
+
+   db_name = document.getElementById("h_db_name").value;
+   
+   db_block_size = Number(document.getElementById("h_db_block_size").value);
+   
+   for (j = 1; j < numero_bases + 1; j++)
+   {
+      document.getElementById("h_instance_name" + j).value = document.getElementById("i_instance_name" + j).value;
+      document.getElementById("h_db_unique_name" + j).value = document.getElementById("i_db_unique_name" + j).value;
+	  document.getElementById("h_fs_name" + j).value = document.getElementById("i_fs_name" + j).value;
+	  document.getElementById("h_hostname" + j).value = document.getElementById("i_hostname" + j).value;
+	  document.getElementById("h_port" + j).value = document.getElementById("i_port" + j).value;
+   }
+}
+
+function agregaRegistroTablaBases()
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value) + 1;
+   document.getElementById("h_numero_bases").value = numero_bases;
+   
+   db_name = document.getElementById("h_db_name").value;
+   
+   document.getElementById("i_db_name").value = document.getElementById("h_db_name").value;
+   document.getElementById("i_db_block_size").value = document.getElementById("h_db_block_size").value;
+   
+   var fila = tab_lista_bases.insertRow(numero_bases);
+   var columna0 = fila.insertCell(0);
+   var columna1 = fila.insertCell(1);
+   var columna2 = fila.insertCell(2);
+   var columna3 = fila.insertCell(3);
+   var columna4 = fila.insertCell(4);
+   var columna5 = fila.insertCell(5);
+   
+   var db_unique_name = db_name + sufijo_dg + numero_bases;
+   var fs_name = db_name;
+   var hostname = "";
+   var port = "";
+   
+   if (numero_bases == 1)
+   {
+      columna0.innerHTML = "<input style=\"width:60px;\" type=\"text\" value=\"Primary\" disabled/>";
+   }
+   else
+   {
+      columna0.innerHTML = "<input style=\"width:60px;\" type=\"text\" value=\"Standby" + (numero_bases - 1) + "\" disabled/>";
+   }
+   columna1.innerHTML = "<input style=\"width:118px;\" id=\"i_instance_name" + numero_bases + "\" type=\"text\" value=\"" + db_name + "\" disabled/>";
+   columna2.innerHTML = "<input style=\"width:118px;\" id=\"i_db_unique_name" + numero_bases + "\" type=\"text\" value=\"" + db_unique_name + "\" disabled/>";
+   columna3.innerHTML = "<input style=\"width:118px;\" id=\"i_fs_name" + numero_bases + "\" type=\"text\" value=\"" + fs_name + "\" />";
+   columna4.innerHTML = "<input style=\"width:298px;\" id=\"i_hostname" + numero_bases + "\" type=\"text\" value=\"\"/>";
+   columna5.innerHTML = "<input style=\"width:98px;\" id=\"i_port" + numero_bases + "\" type=\"number\" value=\"1670\"/>";
+   
+   var h_instance_name = document.createElement("input");
+   h_instance_name.setAttribute("type", "hidden");
+   h_instance_name.setAttribute("id", "h_instance_name" + numero_bases);
+   h_instance_name.setAttribute("value", db_name);
+   
+   var h_db_unique_name = document.createElement("input");
+   h_db_unique_name.setAttribute("type", "hidden");
+   h_db_unique_name.setAttribute("id", "h_db_unique_name" + numero_bases);
+   h_db_unique_name.setAttribute("value", db_unique_name);
+   
+   var h_fs_name = document.createElement("input");
+   h_fs_name.setAttribute("type", "hidden");
+   h_fs_name.setAttribute("id", "h_fs_name" + numero_bases);
+   h_fs_name.setAttribute("value", db_name);
+   
+   var h_hostname = document.createElement("input");
+   h_hostname.setAttribute("type", "hidden");
+   h_hostname.setAttribute("id", "h_hostname" + numero_bases);
+   h_hostname.setAttribute("value", "");
+   
+   var h_port = document.createElement("input");
+   h_port.setAttribute("type", "hidden");
+   h_port.setAttribute("id", "h_port" + numero_bases);
+   h_port.setAttribute("value", "");
+   
+   contenedor_oculto.appendChild(h_instance_name);
+   contenedor_oculto.appendChild(h_db_unique_name);
+   contenedor_oculto.appendChild(h_fs_name);
+   contenedor_oculto.appendChild(h_hostname);
+   contenedor_oculto.appendChild(h_port);
+}
+
+function actualizaTablaBases()
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   
+   for (j=1; j < numero_bases+1; j++)
+   {
+      document.getElementById("i_instance_name" + j).value = document.getElementById("h_db_name").value;
+	  document.getElementById("i_db_unique_name" + j).value = document.getElementById("h_db_name").value + sufijo_dg + j;
+   }
+}
+
+function verificaNUMEROBASES()
+{
+   var error = 0;
+   var nb = Number(document.getElementById("h_numero_bases").value);
+   if (nb == 10)
+   {
+      alert ("[ERROR] El número máximo de Bases de Datos a configurar es 10.");
+      error = 1;
+   }
+return error;
+}
+
+function verificaDBNAME()
+{
+   var error = 0;
+   var dbn = document.getElementById("i_db_name").value;
+   if (! dbn.match(/^[a-zA-Z][0-9a-zA-Z]{1,7}$/))
+   {
+      alert("[ERROR] Nombre de Base de Datos no válido.\n\nUsar:\na) Iniciar con letra\nb) Sólo letras y números\nc) Máximo 8 caracteres\n");
+	  error = 1;
+   }
+   
+   var bs = Number(document.getElementById("i_db_block_size").value);
+   if (bs != 8 && bs != 16 && bs != 32)
+   {
+	  alert ("[ERROR] Tamaño de Bloque de Base de Datos no válido.\n\nUsar:\na) 8 (8K)\nb) 16 (16K)\nc) 32 (32K)");
+	  error = 1;
+   }
+return error;
+}
+
+function actualizarBase()
+{ 
+   if (verificaDBNAME() == 0 && verificaNUMEROBASES() == 0)
+   {
+      configuraDatosOcultos();
+      vaciarTablaConfiguracion();
+      actualizaTablaBases();
+   }
+}
+
+function agregarStandby()
+{ 
+   if (verificaDBNAME() == 0 && verificaNUMEROBASES() == 0)
+   {
+      configuraDatosOcultos();
+      vaciarTablaConfiguracion();
+      agregaRegistroTablaBases();
+   }
+}
+
+function quitarRegistroTablaBases()
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   
+   if (numero_bases > 0)
+   {
+      tab_lista_bases.deleteRow(numero_bases);
+	  
+	  var h_instance_name = document.getElementById("h_instance_name" + numero_bases);
+	  var h_db_unique_name = document.getElementById("h_db_unique_name" + numero_bases);
+	  var h_fs_name = document.getElementById("h_fs_name" + numero_bases);
+	  var h_hostname = document.getElementById("h_hostname" + numero_bases);
+	  var h_port = document.getElementById("h_port" + numero_bases);
+	  contenedor_oculto.removeChild(h_instance_name);
+	  contenedor_oculto.removeChild(h_db_unique_name);
+	  contenedor_oculto.removeChild(h_fs_name);
+	  contenedor_oculto.removeChild(h_hostname);
+	  contenedor_oculto.removeChild(h_port);
+	  
+	  numero_bases = numero_bases - 1;
+   }
+   
+   document.getElementById("h_numero_bases").value = numero_bases;
+}
+
+function quitarStandby()
+{
+   configuraDatosOcultos();
+   vaciarTablaConfiguracion();
+   quitarRegistroTablaBases();
+}
+
+function vaciarTablaConfiguracion()
+{
+   var contenedorTablas = document.getElementById("contenedor_tablas");
+   contenedorTablas.innerHTML = "";
+}
+
+function generaTNSNAMES(idx)
+{  
+   //Plantilla TNSNAMES
+   var plantilla_entrada_tns = ":db_unique_name:=<br />" +
+   "(description=<br />" +
+   "&nbsp;(address=(protocol=tcp)(host=:hostname:)(port=:port:))<br />" +
+   "&nbsp;(connect_data=(server=dedicated)(service_name=:instance_name:))<br />" +
+   ")";
+   
+   var
+   tareas_tnsnames  = "<h1>Cadenas de Conexión</h1>";
+   tareas_tnsnames += "<ol>";
+   tareas_tnsnames += "<li><b>Agregar entradas a tnsnames.ora</b><br /><br /><div>";
+
+   var entradas_tns = "";
+   
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   var instance_name = "";
+   var db_unique_name = "";
+   var hostname = "";
+   var port = "";
+
+   for (j=1; j < numero_bases + 1; j++)
+   {
+      entradas_tns += "cat - >> ${ORACLE_HOME}/network/admin/tnsnames.ora <<_eof_<br /><br \>";
+      db_unique_name = document.getElementById("h_db_unique_name" + j).value;
+	  instance_name = document.getElementById("h_instance_name" + j).value;
+      hostname = document.getElementById("h_hostname" + j).value;
+      port = document.getElementById("h_port" + j).value;
+	  
+      entradas_tns += plantilla_entrada_tns;
+	  entradas_tns = entradas_tns.replace(/:db_unique_name:/g,db_unique_name);
+	  entradas_tns = entradas_tns.replace(/:instance_name:/g,instance_name);
+	  entradas_tns = entradas_tns.replace(/:hostname:/g,hostname);
+	  entradas_tns = entradas_tns.replace(/:port:/g,port);
+	  entradas_tns += "<br /><br \>";
+	  entradas_tns += "_eof_<br /><br />";
+   }  
+   
+   tareas_tnsnames += entradas_tns;
+   tareas_tnsnames += "</div></li>";
+   tareas_tnsnames += "</lo>";
+   
+return tareas_tnsnames;
+}
+
+function generaLISTENER(idx)
+{
+   //Plantillas de Listener
+   var plantilla_crea_dir_listener = "mkdir -p /dbtrac01-:fs_name:/adr_listener_:instance_name:_dg";
+
+   var plantilla_entrada_listener = "LISTENER_:instance_name_upper:_DG=<br />" +
+   "(address=(protocol=tcp)(host=0.0.0.0)(port=:port:))<br /><br />" +
+   "SID_LIST_LISTENER_:instance_name_upper:_DG=<br />" +
+   "(sid_list=(sid_desc=(sid_name=:instance_name:)(oracle_home=${ORACLE_HOME})))<br /><br />" +
+   "admin_restrictions_listener_:instance_name:_dg=on<br />" +
+   "diag_adr_enabled_listener_:instance_name:_dg=on<br />" +
+   "adr_base_listener_:instance_name:_dg=/dbtrac01-:fs_name:/adr_listener_:instance_name:_dg<br />" +
+   "logging_listener_:instance_name:_dg=on<br />" +
+   "trace_level_listener_:instance_name:_dg=off<br />" +
+   "trace_timestamp_listener_:instance_name:_dg=true<br />";
+
+   //var db_unique_name = document.getElementById("h_db_unique_name" + idx).value;
+   var instance_name = document.getElementById("h_instance_name" + idx).value;
+   var fs_name = document.getElementById("h_fs_name" + idx).value;
+   var hostname = document.getElementById("h_hostname" + idx).value;
+   var port = document.getElementById("h_port" + idx).value;
+   
+   var plantilla_iniciar_listener = "lsnrctl start " + "LISTENER_:instance_name:_DG".replace(/:instance_name:/g,instance_name).toUpperCase();
+
+   var 
+   tareas_listener = "<h1>Listener</h1>";   
+
+   tareas_listener += "<ol>";
+   tareas_listener += "<li><b>Creación de Carpeta ADR del Listener</b><br /><br /><div>";
+   var
+   crea_dir_listener = plantilla_crea_dir_listener.replace(/:fs_name:/g,fs_name);
+   crea_dir_listener = crea_dir_listener.replace(/:instance_name:/g,instance_name);
+   //crea_dir_listener = crea_dir_listener.replace(/:db_unique_name:/g,db_unique_name);
+   
+   tareas_listener += crea_dir_listener;
+   
+   tareas_listener += "</div></li><br /><br />";
+   tareas_listener += "<li><b>Agregar entrada a listener.ora</b><br /><br /><div>";
+   
+   var
+   entrada_listener  = "cat - >> ${ORACLE_HOME}/network/admin/listener.ora <<_eof_<br /><br />";
+   entrada_listener += plantilla_entrada_listener;
+   entrada_listener  = entrada_listener.replace(/:instance_name:/g,instance_name);
+   entrada_listener  = entrada_listener.replace(/:fs_name:/g,fs_name);
+   entrada_listener  = entrada_listener.replace(/:instance_name_upper:/g,instance_name.toUpperCase());
+   //entrada_listener  = entrada_listener.replace(/:db_unique_name:/g,db_unique_name);
+   entrada_listener  = entrada_listener.replace(/:port:/g,port);
+   entrada_listener += "_eof_</div><br />";
+   
+   tareas_listener += entrada_listener;
+   
+   tareas_listener += "</li><br /><br />";
+   tareas_listener += "<li><b>Iniciar el listener</b><br /><br /><div>";
+   
+   var
+   iniciar_listener = plantilla_iniciar_listener;
+   
+   tareas_listener += iniciar_listener;
+   
+   tareas_listener += "</div></li><br /><br />";
+   
+return tareas_listener;
+}
+
+function generaSTANDBY(idx, lista_bases)
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   var db_unique_name_p = document.getElementById("h_db_unique_name1").value;
+   var instance_name_p = document.getElementById("h_instance_name1").value;
+   var db_unique_name = document.getElementById("h_db_unique_name" + idx).value;
+   var instance_name = document.getElementById("h_instance_name" + idx).value;
+   var fs_name = document.getElementById("h_fs_name" + idx).value;
+   var hostname = document.getElementById("h_hostname" + idx).value;
+   var port = document.getElementById("h_port" + idx).value;
+   
+   var par_parameter_value_convert="parameter_value_convert ";
+   var par_instance_name = "instance_name='" + instance_name + "'";
+   var par_db_unique_name = "db_unique_name='" + db_unique_name + "'";
+   var par_cluster_database = "cluster_database='false'";
+   var log_archive_max_processes = "log_archive_max_processes=8";
+   var par_remote_login_passwordfile = "remote_login_passwordfile='exclusive'";
+   var par_standby_file_management = "standby_file_management='auto'";
+   var par_log_archive_dest_local = "log_archive_dest_:n:='location=/arch_" + fs_name + " valid_for=(all_logfiles,all_roles) db_unique_name=" + db_unique_name + "'";
+   var par_log_archive_dest_service = "log_archive_dest_:n:='service=:db_unique_name: lgwr async valid_for=(online_logfiles,primary_role) db_unique_name=:db_unique_name:'";
+   var par_log_archive_config = "log_archive_config='dg_config=(" + lista_bases + ")'";
+   var par_fal_client = "fal_client='" + db_unique_name + "'";
+   var fal_server = lista_bases;
+       fal_server = fal_server.replace(db_unique_name + ",", "");
+	   fal_server = fal_server.replace(new RegExp('\\b,'+db_unique_name+'\\b','g'),"");
+   var par_fal_server = "fal_server='" + fal_server + "'";
+   
+   var par_db_file_name_convert = "db_file_name_convert=";
+   var par_log_file_name_convert = "log_file_name_convert="
+   var par_diagnostic_dest = "diagnostic_dest='/dbtrac01-" + fs_name + "'";
+   var par_service_names = "";
+   
+   var lista_db_file_name_convert = new Array();
+   var fs_name_aux;
+   for (j=1; j < numero_bases + 1; j++)
+   {
+      if (j != idx)
+	  {
+         fs_name_aux = document.getElementById("h_fs_name" + j).value;
+		 par_parameter_value_convert += ",'-" + fs_name_aux + "/','-" + fs_name + "/'";
+		 par_db_file_name_convert  += ",'-" + fs_name_aux + "/','-" + fs_name + "/'";
+		 par_log_file_name_convert += ",'-" + fs_name_aux + "/','-" + fs_name + "/'";
+      }
+   }
+   par_parameter_value_convert = par_parameter_value_convert.replace("parameter_value_convert ,","parameter_value_convert ");
+   par_db_file_name_convert = par_db_file_name_convert.replace("=,","=");
+   par_log_file_name_convert = par_log_file_name_convert.replace("=,","=");
+   
+   var db_unique_name_aux = "";
+   var tareas_base = "";
+   //Si idx es 1, entonces es la base de datos primaria
+   if (idx == 1)
+   {
+      var tareas_primary = "<h1>Configuración Primary</h1>";
+	  tareas_primary += "<ol>";
+	  
+      var configura_parametros = "";
+	  configura_parametros += "sqlplus /nolog <<_eof_<br \>";
+	  configura_parametros += "connect / as sysdba<br />";
+	  configura_parametros += "set echo on<br />";
+      configura_parametros += "alter system set " + par_log_archive_config + " scope=spfile sid='*';<br />";
+      configura_parametros += "alter system set " + par_fal_client + " scope=spfile sid='*';<br />";
+      configura_parametros += "alter system set " + par_fal_server + " scope=spfile sid='*';<br />";
+	  
+	  tareas_primary += "<li><b>Configura Parametros y Modo Archive</b><br /><br /><div>";
+	  configura_parametros += "alter system set " + par_db_unique_name        + " scope=spfile sid='*';<br />";
+	  par_service_names = "service_names='" + db_name + "," + db_unique_name + "'";
+	  configura_parametros += "alter system set " + par_service_names         + " scope=spfile sid='*';<br />";
+	  configura_parametros += "alter system set " + log_archive_max_processes + " scope=spfile sid='*';<br />";
+	  
+	  for (j=1; j < numero_bases + 1; j++)
+	  {
+	     db_unique_name_aux = document.getElementById("h_db_unique_name" + j).value;
+	     if (j == idx)
+		 {
+		    configura_parametros += "alter system set " + par_log_archive_dest_local.replace(/:n:/g,j) + " scope=spfile sid='*';<br />";
+		 }
+		 else
+		 {
+		    configura_parametros += "alter system set " + par_log_archive_dest_service.replace(/:n:/g,j).replace(/:db_unique_name:/g,db_unique_name_aux) + " scope=spfile sid='*';<br />";
+		 }
+	  }
+	  
+	  configura_parametros += "alter system set " + par_db_file_name_convert + " scope=spfile sid='*';<br />";
+	  configura_parametros += "alter system set " + par_log_file_name_convert + " scope=spfile sid='*';<br />";
+	  configura_parametros += "alter system set " + par_remote_login_passwordfile + " scope=spfile sid='*';<br />";
+	  configura_parametros += "alter system set " + par_standby_file_management + " scope=spfile sid='*';<br />";
+	  configura_parametros += "alter system set " + par_diagnostic_dest + " scope=spfile sid='*';<br />";
+	  configura_parametros += "shutdown immediate;<br />";
+	  configura_parametros += "startup mount;<br />";
+	  configura_parametros += "alter database archivelog;<br />";
+	  configura_parametros += "alter database force logging;<br />";
+	  configura_parametros += "shutdown immediate;<br />";
+	  configura_parametros += "startup;<br />";
+	  configura_parametros += "disconnect;<br />";
+	  configura_parametros += "exit;<br />";
+	  configura_parametros += "_eof_<br />";
+	  
+	  tareas_primary += configura_parametros;
+	  tareas_primary += "</div><br /><br /></li>";
+	  
+      var configura_passwordfile = "";
+      configura_passwordfile += "orapwd file=${ORACLE_HOME}/dbs/orapw" + db_name + " entries=10 force=y<br />";
+	  
+      tareas_primary += "<li><b>Crear Password file</b><br /><br /><div>";
+      tareas_primary += configura_passwordfile;
+      tareas_primary += "</div><br /><br /></li>";
+	  
+	  tareas_primary += "</ol>";
+	  
+      tareas_base = tareas_primary;
+   }//idx es mayor a 1, entonces se trata de una base de datos Standby
+   else
+   {
+      var tareas_standby = "<h1>Creación de Physical Standby</h1>";
+	  tareas_standby += "<ol>";
+	  
+	  var pfile_dummy = "";
+	  pfile_dummy += "cat - > /tmp/" + instance_name + ".ora <<_eof_<br />";
+	  pfile_dummy += "db_name=" + db_name + "</br />";
+	  pfile_dummy += "db_unique_name=" + db_unique_name + "</br />";
+	  pfile_dummy += "db_block_size=" + (db_block_size * 1024) + "</br />";
+	  pfile_dummy += "_eof_<br /><br />";
+
+	  
+	  
+	  var inicia_axiliary = "";
+	  inicia_axiliary += "export ORACLE_SID=" + instance_name + ";<br /><br />";
+	  inicia_axiliary += "sqlplus /nolog <<_eof_<br />";
+	  inicia_axiliary += "connect /as sysdba<br />";
+	  inicia_axiliary += "set echo on<br />";
+	  inicia_axiliary += "shutdown immediate;<br />";
+	  inicia_axiliary += "startup nomount pfile='/tmp/" + instance_name + ".ora';<br />";
+	  inicia_axiliary += "exit;<br />";
+	  inicia_axiliary += "_eof_<br>";
+	  
+	  tareas_standby += "<li><b>Iniciar Instancia Auxiliar</b><br /><br /><div>";
+	  tareas_standby += pfile_dummy;
+	  tareas_standby += inicia_axiliary;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  var db_unique_name_local = db_unique_name;
+	  var db_unique_name_remoto = document.getElementById("h_db_unique_name1").value;
+	  var tnsping = "";
+	  tnsping += "tnsping " + db_unique_name_local + "<br /><br />";
+	  tnsping += "tnsping " + db_unique_name_remoto + "<br />";
+	  
+	  tareas_standby += "<li><b>Prueba de conexión vía TNSPING</b><br /><br /><div>";
+	  tareas_standby += tnsping;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  var prueba_conexion_rman = "";
+      prueba_conexion_rman += "cat - > /tmp/prueba_conexion.sh <<_eof_<br />";
+      prueba_conexion_rman += "clear;<br />";
+	  prueba_conexion_rman += "echo \"\";<br />";
+	  prueba_conexion_rman += "echo \"Prueba de Conexion RMAN en TARGET & AUXILIARY\";<br />";
+	  prueba_conexion_rman += "echo \"============================================\";<br />";
+      prueba_conexion_rman += "read -p \"Indica el Password de SYS: \" PW_SYS;<br />";
+      prueba_conexion_rman += "export PW_SYS;<br />";
+      prueba_conexion_rman += "echo \"\";<br />";
+      prueba_conexion_rman += "echo \"==========[ Creacion de Archivo Password file ]==========\";<br />";
+	  prueba_conexion_rman += "orapwd password=\"${PW_SYS}\" file=${ORACLE_HOME}/dbs/orapw" + instance_name + " entries=10 force=y<br />";
+      prueba_conexion_rman += "echo \"\";<br />";
+      prueba_conexion_rman += "echo \"\";<br />";
+      prueba_conexion_rman += "echo \"==========[ Verificando conexion con TARGET ]==========\";<br />";
+      prueba_conexion_rman += "echo \"run{allocate channel ch1 type disk;}\<br />";
+      prueba_conexion_rman += "exit;<br />";
+      prueba_conexion_rman += "\" | rman target sys/\"\\${PW_SYS}\"@" + db_unique_name_p + ";<br />";
+      prueba_conexion_rman += "echo \"\";<br />";
+      prueba_conexion_rman += "echo \"\";<br />";
+      prueba_conexion_rman += "echo \"==========[ Verificando conexion con AUXILIARY ]==========\";<br />";
+      prueba_conexion_rman += "echo \"run{allocate auxiliary channel ch1 type disk;}<br />";
+      prueba_conexion_rman += "exit;\" | rman auxiliary sys/\"\\${PW_SYS}\"@" + db_unique_name + ";<br />";
+      prueba_conexion_rman += "_eof_<br /><br />";
+	  prueba_conexion_rman += ". /tmp/prueba_conexion.sh";
+	  
+	  tareas_standby += "<li><b>Prueba de conexión RMAN</b><br /><br /><div>";
+	  tareas_standby += prueba_conexion_rman;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  tareas_standby += "<li><b>Crear script de Duplicate</b><br /><br /><div>";
+	  
+	  var script_duplicate = "cat - > /tmp/duplicate-" + db_unique_name + ".rman <<_eof_<br />";
+      script_duplicate += "connect target sys/\"${PW_SYS}\"@" + db_unique_name_p + ";<br />";
+      script_duplicate += "connect auxiliary sys/\"${PW_SYS}\"@" + db_unique_name + ";<br /><br />";	  
+      script_duplicate += "run {<br />";
+      script_duplicate += "allocate channel ch1 type disk;<br />";
+      script_duplicate += "allocate channel ch2 type disk;<br />";
+      script_duplicate += "allocate channel ch3 type disk;<br />";
+      script_duplicate += "allocate channel ch4 type disk;<br /><br />";
+      script_duplicate += "allocate auxiliary channel ch5 type disk;<br />";
+      script_duplicate += "allocate auxiliary channel ch6 type disk;<br /><br />";
+      script_duplicate += "duplicate target database for standby from active database<br />";
+      script_duplicate += "password file<br />";
+      script_duplicate += "spfile<br />";
+	   
+	  var configura_parametros = "";
+	  configura_parametros += par_parameter_value_convert + "<br />";
+	  configura_parametros += "set " + par_cluster_database + "<br />";
+	  configura_parametros += "set " + par_instance_name + "<br />";
+      configura_parametros += "set " + par_db_unique_name + "<br />";
+	  par_service_names = "service_names='" + db_name + "," + db_unique_name + "'";
+	  configura_parametros += "set " + par_service_names + "<br />";
+      configura_parametros += "set " + par_fal_client + "<br />";
+      configura_parametros += "set " + par_fal_server + "<br />";
+	  
+	  for (j=1; j < numero_bases + 1; j++)
+	  {
+	     db_unique_name_aux = document.getElementById("h_db_unique_name" + j).value;
+	     if (j == idx)
+		 {
+		    configura_parametros += "set " + par_log_archive_dest_local.replace(/:n:/g,j) + "<br />";
+		 }
+		 else
+		 {
+		    configura_parametros += "set " + par_log_archive_dest_service.replace(/:n:/g,j).replace(/:db_unique_name:/g,db_unique_name_aux) + "<br />";
+		 }
+	  }
+	  
+	  configura_parametros += "set " + par_db_file_name_convert + "<br />";
+	  configura_parametros += "set " + par_log_file_name_convert + "<br />";
+	  configura_parametros += "set " + par_diagnostic_dest + "<br />";
+	  
+      script_duplicate += configura_parametros;
+	  
+      script_duplicate += "nofilenamecheck<br />";
+      script_duplicate += ";<br />";
+      script_duplicate += "}<br />";
+	  script_duplicate += "_eof_";
+	  
+	  tareas_standby += script_duplicate;
+	  
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  var comando_duplicate = "";
+	  comando_duplicate += "nohup rman cmdfile=/tmp/duplicate-" + db_unique_name + ".rman &> /tmp/duplicate-" + db_unique_name + ".log &";
+	  
+	  tareas_standby += "<li><b>Creación de Standby Database</b><br /><br /><div>";
+	  tareas_standby += comando_duplicate;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  var revisa_log = "";
+	  revisa_log += "while true; do tail -20 /tmp/duplicate-" + db_unique_name + ".log; sleep 4; done";
+	  
+	  tareas_standby += "<li><b>Seguimiento al Log</b><br /><br /><div>";
+	  tareas_standby += revisa_log;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  var activar_recuperacion = "";
+	  activar_recuperacion += "export ORACLE_SID=" + instance_name + ";<br /><br />";
+	  activar_recuperacion += "sqlplus /nolog <<_eof_<br />";
+	  activar_recuperacion += "connect /as sysdba<br />";
+	  activar_recuperacion += "set echo on<br />";
+	  activar_recuperacion += "alter database recover managed standby database disconnect;<br />";
+	  activar_recuperacion += "exit;<br />";
+	  activar_recuperacion += "_eof_<br />";
+	  
+	  tareas_standby += "<li><b>Activar la Recuperación en Standby Database</b><br /><br /><div>";
+	  tareas_standby += activar_recuperacion;
+	  tareas_standby += "</div><br /><br /></li>";
+	  
+	  tareas_standby += "</ol>";
+	  
+	  tareas_base += tareas_standby;
+   }
+return tareas_base
+}
+
+function agregaTablaConfiguracion(idx, lista_bases)
+{
+   var contenedorTablas = document.getElementById("contenedor_tablas");
+   
+   var contenidoActual = "";
+   if (idx == 1)
+   {
+      contenidoActual = "<h2>Configuracion Data Guard</h2>";
+   }
+   else
+   {
+      contenidoActual = contenedorTablas.innerHTML;
+   }
+   
+   db_unique_name = document.getElementById("h_db_unique_name" + idx).value;
+   var nuevaTabla = "";
+   nuevaTabla += "<table id=\"tab_configuracion\">";
+   nuevaTabla += "<tr><th colspan=\"3\">DB_UNIQUE_NAME = " + db_unique_name + "</th></tr>";
+   nuevaTabla += "<tr>";
+   nuevaTabla += "<td>" + generaTNSNAMES(idx) + "</td>";
+   nuevaTabla += "<td>" + generaLISTENER(idx) + "</td>";
+   nuevaTabla += "<td>" + generaSTANDBY(idx, lista_bases) + "</td>";
+   nuevaTabla += "</tr>";
+   nuevaTabla += "</table>";
+   
+   contenidoActual += nuevaTabla;
+   
+   contenedorTablas.innerHTML = contenidoActual;
+}
+
+function llenaTablaBases()
+{
+   document.getElementById("i_db_name").value = document.getElementById("h_db_name").value;
+   document.getElementById("i_db_block_size").value = document.getElementById("h_db_block_size").value;
+   
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   
+   while (tab_lista_bases.rows.length > 1)
+   {
+      tab_lista_bases.deleteRow(tab_lista_bases.rows.length - 1);
+   }
+   
+   for (i=1; i < numero_bases + 1; i++)
+   {
+      var fila = tab_lista_bases.insertRow(i);
+      var columna0 = fila.insertCell(0);
+	  var columna1 = fila.insertCell(1);
+      var columna2 = fila.insertCell(2);
+      var columna3 = fila.insertCell(3);
+	  var columna4 = fila.insertCell(4);
+	  var columna5 = fila.insertCell(5);
+   
+      var instance_name = document.getElementById("h_instance_name" + i).value;
+	  var db_unique_name = document.getElementById("h_db_unique_name" + i).value;
+	  var fs_name = document.getElementById("h_fs_name" + i).value;
+      var hostname = document.getElementById("h_hostname" + i).value;
+      var port = document.getElementById("h_port" + i).value;
+   
+      if (i == 1)
+	  {
+	     columna0.innerHTML = "<input style=\"width:60px;\" type=\"text\" value=\"Primary\" disabled/>";
+	  }
+	  else
+	  {
+	     columna0.innerHTML = "<input style=\"width:60px;\" type=\"text\" value=\"Standby\" disabled/>";
+	  }
+      columna1.innerHTML = "<input style=\"width:118px;\" id=\"i_instance_name" + i + "\" type=\"text\" value=\"" + instance_name + "\" disabled/>";
+	  columna2.innerHTML = "<input style=\"width:118px;\" id=\"i_db_unique_name" + i + "\" type=\"text\" value=\"" + db_unique_name + "\" disabled/>";
+	  columna3.innerHTML = "<input style=\"width:118px;\" id=\"i_fs_name" + i + "\" type=\"text\" value=\"" + fs_name + "\"/>";
+      columna4.innerHTML = "<input style=\"width:298px;\" id=\"i_hostname" + i + "\" type=\"text\" value=\"" + hostname + "\"/>";
+      columna5.innerHTML = "<input style=\"width:98px;\" id=\"i_port" + i + "\" type=\"number\" value=\"" + port +"\"/>";
+   }
+}
+
+function verificaEntradaBases()
+{
+   var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   var error = 0;
+   
+   if (numero_bases > 1)
+   {
+      for (j=1; j < numero_bases + 1; j++)
+      {
+         var i_instance_name = document.getElementById("i_instance_name" + j).value;
+		 var i_db_unique_name = document.getElementById("i_db_unique_name" + j).value;
+		 var i_fs_name = document.getElementById("i_fs_name" + j).value;
+	     var i_hostname = document.getElementById("i_hostname" + j).value;
+	     var i_port = document.getElementById("i_port" + j).value;
+	  
+	     if (!i_instance_name || !i_db_unique_name || !i_fs_name || !i_hostname || !i_port)
+	     {
+	        error = 1;
+		    j = numero_bases + 1;
+	     }
+      }
+      if (error == 1)
+      {
+         alert("[ERROR] Datos vacios en la información de las Bases de Datos!");
+      }
+   }
+   else
+   {
+      alert("[ERROR] Se deben agregar al menos 2 Bases de Datos.");
+	  error = 1;
+   }
+return error;
+}
+
+function generaConfiguracion()
+{
+   vaciarTablaConfiguracion();
+   
+   if (verificaDBNAME() == 0 && verificaEntradaBases() == 0)
+   {
+      configuraDatosOcultos();
+      llenaTablaBases();
+   
+      var numero_bases = Number(document.getElementById("h_numero_bases").value);
+   
+      var lista_bases = "";
+      for (i=1; i < numero_bases + 1; i++)
+      {
+         lista_bases += document.getElementById("h_db_unique_name" + i).value;
+	     if (i < numero_bases)
+	     {
+	        lista_bases += ",";
+	     }
+      }
+   
+      for (i=1; i < numero_bases + 1; i++)
+      {
+         agregaTablaConfiguracion(i, lista_bases);	  
+      }
+   }
+}
+</script>
+</head>
+<body>
+<h1>Asistente para Configuracion Data Guard</h1>
+<p>
+Versión: 1.0<br />
+Por: Juan Manuel Cruz López
+</p>
+<table>
+<tr>
+<td>
+	<table id="tab_info_base" class="tab_info_base">
+	<tr>
+	<td>
+	Nombre de <br />Base de Datos:<br />
+	<input type="text" id="i_db_name" value=""/>
+	</td>
+	<td>
+	&nbsp;&nbsp;
+	</td>
+	<td>
+	Tamaño de Bloque de <br />Base de Datos:<br />
+	<input type="number" id="i_db_block_size" value=""/>&nbsp;KBytes
+	</td>
+	</tr>
+	<tr><td colspan="3" style="text-align: right;"><input type="button" value="Agregar Base" onclick="agregarStandby();"/>
+		<input type="button" value="Quitar Base" onclick="quitarStandby();"/>
+		<input type="button" value="Actualizar" onclick="actualizarBase();"/>
+		</td>
+	</tr>
+	</table>
+</td>
+<td>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+</td>
+<td>
+    <table>
+	<tr>
+	<td>
+       <p><b>Bases de Datos que participan en el Data Guard:</b></p>
+	   <table id="tab_lista_bases" class="tab_lista_bases">
+	   <tr>
+	       <th style="width:80px;">Rol</th>
+		   <th style="width:120px;">Nombre Instancia</th>
+		   <th style="width:120px;">Nombre Unico de BD</th>
+		   <th style="width:120px;">Sufijo Filesystem</th>
+		   <th style="width:300px;">Nombre Servidor (wt)</th>
+		   <th style="width:100px;">Puerto Listener</th>
+	   </tr>
+	   </table>
+	</td>
+	<tr>
+	<td style="text-align: right;">
+	<input type="button" value="Ver Configuracion" onclick="generaConfiguracion();"/>
+	</td>
+	</tr>
+	</table>
+</td>
+</tr>
+</table>
+<br />
+<div id="contenedor_tablas"></div>
+<div id="contenedor_oculto">
+<input id="h_numero_bases" type="hidden" value="0">
+<input id="h_db_name" type="hidden" value="">
+<input id="h_db_block_size" type="hidden" value="0">
+</div>
+<script type="text/javascript">
+var tab_lista_bases = document.getElementById("tab_lista_bases");
+var tab_configuracion = document.getElementById("tab_configuracion");
+var contenedor_oculto = document.getElementById("contenedor_oculto");
+document.getElementById("i_db_name").value = document.getElementById("h_db_name").value;
+document.getElementById("i_db_block_size").value = document.getElementById("h_db_block_size").value;
+</script>
+</body>
+</html>
