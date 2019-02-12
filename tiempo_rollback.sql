@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 -------------------------------------------------------------------------------
 --- Script: calculate_rollback_time.sql
 --- Copyright: (c)  Daniel Alberto Enriquez García
@@ -31,7 +31,8 @@ set term off;
 variable SID_ number;
 exec :SID_:='&1';
 set term on
-declare
+--        Nombre:
+DECLARE
  cursor tx is
 SELECT s.inst_id,s.sid,s.serial#,s.username,
    t.used_ublk,
@@ -100,12 +101,19 @@ to_char(cast(numtodsinterval(used_ublk2/(used_ublk1 - used_ublk2)/6/60/24,'DAY')
 into remaining_time
 from dual;
 
+/*
 select q.sql_id, replace(q.SQL_TEXT,chr(0)), program, OSUSER
 into  xsqlid,  xsql_text, xprogram , xosuser
 from v$session s,v$sql q
 where s.PREV_SQL_ADDR = q.address
 and s.PREV_HASH_VALUE = q.hash_value
 and s.sid = xsid
+and s.serial#=xserial;
+*/
+select '', '', program, OSUSER
+into  xsqlid,  xsql_text, xprogram , xosuser
+from v$session s
+where s.sid = xsid
 and s.serial#=xserial;
 
  if used_ublk2 < used_ublk1
@@ -125,6 +133,7 @@ and s.serial#=xserial;
  'ESTIMATED FINISH TIME: '||to_char(sysdate + used_ublk2 / (used_ublk1 - used_ublk2) / 6 / 60 / 24,'DD-MON-YYYY HH24:MI:SS'
  )
    );
+/*
    sys.dbms_output.put_line
    (
  'COMMAND:               '||commande||chr(10)||
@@ -133,7 +142,9 @@ and s.serial#=xserial;
  'SQL_ID:                '||xsqlid||chr(10)||
  'SQL_TEXT:              '||xsql_text
    );
+*/
  end if;
 end;
 /
+prompt
 prompt

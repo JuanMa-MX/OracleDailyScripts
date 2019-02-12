@@ -1,21 +1,10 @@
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
 CLEAR BREAKS
 CLEAR COLUMNS
 
 SET LINES 200
 SET PAGES 10000
-COL event_blocker  FOR A30 TRUNC
-COL event_blocked  FOR A30 TRUNC
-COL identifier     FOR A15
-COL username       FOR A15
+COL event_blocker_blocked FOR A35
+COL username_sid_serial   FOR A30
 COL machine        FOR A25 TRUNC
 COL program        FOR A15 TRUNC
 COL sqlid_child    FOR A16
@@ -26,11 +15,10 @@ WITH curr_session AS (SELECT * FROM v$session)
 SELECT
        TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
       ,bl.max_blocked cnt
-      ,se.sid||','||se.serial# identifier
-      ,NVL(se.username,'-'||pr.pname||'-') username
-      ,se.event event_blocker
-      ,bl.event event_blocked
       ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
+      ,RPAD(NVL(se.username,pr.pname),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
+      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
       ,se.program
       ,se.machine
 FROM curr_session se, v$process pr

@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set verify off
 PROMPT
 

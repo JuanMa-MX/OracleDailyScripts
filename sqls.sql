@@ -2,7 +2,7 @@
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
 --   Descripcion: Muestra las sentencias SQL en ejecucion e indica el
 --                numero de sesiones que la estan ejecutando
---           Uso: @sqls
+--           Uso: @sqls ENTER
 --Requerimientos: Acceso a [g]v$session, v$sqlarea
 --Licenciamiento: Ninguno
 --        Creado: 10/07/2017

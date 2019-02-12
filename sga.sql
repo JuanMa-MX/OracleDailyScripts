@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set lines 100
 col "Main SGA Areas" for a17
 col "Pool" for a15

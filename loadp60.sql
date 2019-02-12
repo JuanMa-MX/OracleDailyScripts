@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 col short_name  format a20              heading 'Load Profile'
 col per_sec     format 999,999,999.9    heading 'Per Second'
 col per_tx      format 999,999,999.9    heading 'Per Transaction'

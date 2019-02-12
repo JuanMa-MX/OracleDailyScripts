@@ -1,3 +1,6 @@
+set lines 200
+col sess_info for a120 word_wrap
+
 select
    lpad (lvl, 2)         || ' '
  ||lpad ('>', lvl*2, '-')|| ' '

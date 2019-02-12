@@ -6,7 +6,7 @@
 --Licenciamiento: Ninguno
 --        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 
 SET ECHO OFF
 PROMPT

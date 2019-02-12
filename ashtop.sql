@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 --------------------------------------------------------------------------------
 --@ashtop sql_id session_type='FOREGROUND' sysdate-5*(1/24/60) sysdate
 --@ashtop sql_id session_type='FOREGROUND' to_date('20180627_0800','yyyymmdd_hh24mi') to_date('20180627_0810','yyyymmdd_hh24mi')

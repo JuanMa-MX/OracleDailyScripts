@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 --Para ver distribucion de ejecucion de una sentencia, no olvidar descomentar la columna correspondiente
 --@dashtop sample_time,sql_opname,sql_id,event "sql_id='7u3j3x0fahyaw'" "to_date('20180804_0000','yyyymmdd_hh24mi')" "to_date('20180804_1200','yyyymmdd_hh24mi')"
 --

@@ -63,7 +63,7 @@ cat > waits.sql <<'LINEAS_CODIGO'
 --Licenciamiento: Ninguno
 --        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 
 SET ECHO OFF
 PROMPT
@@ -290,6 +290,7 @@ accept where_ char default '1=1' prompt 'Sentencia WHERE? &prompt_where_ [1=1]: 
 SELECT
  waiting_active
 ,event
+,status
 ,&columns_
 FROM
 (
@@ -308,7 +309,8 @@ SELECT
 &ge_101_  ||TO_CHAR(CAST(numtodsinterval(s.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) waiting_active
 &l_101_  ,w.event
 &ge_101_ ,s.event
-&ge_92_  ,s.sid||','||s.serial#||'@'||s.inst_id identifier
+,s.status
+&ge_92_  ,s.sid||','||s.serial#||',@'||s.inst_id identifier
 &l_92_   ,s.sid||','||s.serial# identifier
 &ge_112_  ,NVL(s.username,'-|'||p.pname||'|-') username
 &l_112_   ,NVL(s.username,'-|ORACLE|-') username
@@ -343,7 +345,7 @@ cat > sqls.sql <<'LINEAS_CODIGO'
 --         Autor: Juan Manuel Cruz Lopez (JohnXJean)
 --   Descripcion: Muestra las sentencias SQL en ejecucion e indica el
 --                numero de sesiones que la estan ejecutando
---           Uso: @sqls
+--           Uso: @sqls ENTER
 --Requerimientos: Acceso a [g]v$session, v$sqlarea
 --Licenciamiento: Ninguno
 --        Creado: 10/07/2017
@@ -1128,42 +1130,58 @@ COL info_session FOR A80
 ACCEPT where_ CHAR DEFAULT '1=1' PROMPT 'Sentencia WHERE? sid spid [1=1]: ';
 
 SELECT 'dummy_value' dummy_value,
-&l_92_ 'IDENTIFIER  : ' || s.sid || ',' || s.serial# || CHR(10) ||
-&ge_92_ 'IDENTIFIER  : ' || s.sid || ',' || s.serial# || ',' ||'@'||s.inst_id || CHR(10) ||
-'LOGON TIME  : ' || TO_CHAR(s.logon_time,'YYYY-MON-DD HH24:MI:SS') || CHR(10) ||
-'STATUS      : ' || s.status || CHR(10) ||
-&ge_112_  'USERNAME    : ' ||NVL(s.username,'-|'||p.pname||'|-') || CHR(10) ||
-&l_112_   'USERNAME    : ' || s.username || CHR(10) ||
-'SCHEMA      : ' || s.schemaname || CHR(10) ||
-'OSUSER      : ' || s.osuser || CHR(10) ||
-'MODULE      : ' || s.program || CHR(10) ||
-'ACTION      : ' || s.schemaname || CHR(10) ||
-'CLIENT INFO : ' || s.client_info || CHR(10) ||
-'PROGRAM     : ' || s.program || CHR(10) ||
-'SPID        : ' || p.spid || CHR(10) ||
-'MACHINE     : ' || s.machine || CHR(10) ||
-'TYPE        : ' || s.type || CHR(10) ||
-'TERMINAL    : ' || s.terminal || CHR(10) ||
-'CPU         : ' || q.cpu_time/1e6 || CHR(10) ||
-'ELAPSED_TIME: ' || q.elapsed_time/1e6 || CHR(10) ||
-'BUFFER_GETS : ' || q.buffer_gets || CHR(10) ||
-&l_101_  'SQL_ID      : ' || s.sql_address||'-'||s.sql_hash_value || CHR(10) ||
-&ge_101_ 'SQL_ID      : ' || q.sql_id || CHR(10) ||
-&l_101_  'CHILD_NUM   : ' || q.child_number || CHR(10) ||
-&ge_101_ 'CHILD_NUM   : ' || s.sql_child_number || CHR(10) ||
+&l_92_ 'IDENTIFIER  : ' || sid || ',' || serial# || CHR(10) ||
+&ge_92_ 'IDENTIFIER  : ' || sid || ',' || serial# || ',' ||'@'||inst_id || CHR(10) ||
+'LOGON TIME  : ' || TO_CHAR(logon_time,'YYYY-MON-DD HH24:MI:SS') || CHR(10) ||
+'STATUS      : ' || status || CHR(10) ||
+&ge_112_  'USERNAME    : ' ||NVL(username,'-|'||pname||'|-') || CHR(10) ||
+&l_112_   'USERNAME    : ' || NVL(username,'-|BGProcess|-') || CHR(10) ||
+'SCHEMA      : ' || schemaname || CHR(10) ||
+'OSUSER      : ' || osuser || CHR(10) ||
+'MODULE      : ' || module || CHR(10) ||
+'ACTION      : ' || action || CHR(10) ||
+'CLIENT INFO : ' || client_info || CHR(10) ||
+'PROGRAM     : ' || program || CHR(10) ||
+'SPID        : ' || spid || CHR(10) ||
+'MACHINE     : ' || machine || CHR(10) ||
+'TYPE        : ' || type || CHR(10) ||
+'TERMINAL    : ' || terminal || CHR(10) ||
+'CPU         : ' || cpu_time/1e6 || CHR(10) ||
+'ELAPSED_TIME: ' || elapsed_time/1e6 || CHR(10) ||
+'BUFFER_GETS : ' || buffer_gets || CHR(10) ||
+&l_101_  'SQL_ID      : ' || sql_address||'-'||sql_hash_value || CHR(10) ||
+&ge_101_ 'SQL_ID      : ' || sql_id || CHR(10) ||
+&l_101_  'CHILD_NUM   : ' || child_number || CHR(10) ||
+&ge_101_ 'CHILD_NUM   : ' || sql_child_number || CHR(10) ||
 &l_111_  'START_TIME  : ' || 'UNKNOWN' || CHR(10) ||
-&ge_111_ 'START_TIME  : ' || TO_CHAR(s.sql_exec_start,'yyyy-mm-dd hh24:mi') || CHR(10) ||
-&l_101_  'SQL_TEXT    : ' || q.sql_text || CHR(10) ||
-&ge_101_ 'SQL_TEXT    : ' || q.sql_fulltext || CHR(10) ||
+&ge_111_ 'START_TIME  : ' || TO_CHAR(sql_exec_start,'yyyy-mm-dd hh24:mi') || CHR(10) ||
+'SQL_TEXT    : ' || sql_text || CHR(10) ||
 '--------------------------------------------------------------------------------'
 info_session
-&l_92_  FROM (SELECT * FROM v$session WHERE &where_ ) s, v$process p, v$sql q
-&l_92_  WHERE s.paddr = p.addr AND q.address(+) = s.sql_adress and q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number
-&ge_92_ FROM (SELECT * FROM gv$session WHERE &where_ ) s INNER JOIN gv$process p ON (p.inst_id = s.inst_id AND  p.addr = s.paddr)
-&ge_92_                   LEFT OUTER JOIN gv$sql q ON (q.inst_id = s.inst_id
-&e_92_                                             AND q.address = s.sql_adress AND q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number )
-&ge_101_                                           AND q.sql_id = s.sql_id AND q.child_number = s.sql_child_number )
-WHERE NVL(q.sql_text,'-') NOT LIKE '%dummy_value%'
+FROM (   SELECT 
+          s.sid,s.serial#,s.logon_time,s.status,s.username,s.schemaname,s.osuser
+         ,s.module,s.action,s.client_info,s.program,s.machine,s.type,s.terminal
+&l_101_  ,s.sql_address,s.sql_hash_value
+&ge_101_ ,s.sql_child_number
+&ge_111_ ,s.sql_exec_start
+&ge_92_  ,s.inst_id
+         ,p.spid
+&ge_112_ ,p.pname
+         ,q.cpu_time
+         ,q.elapsed_time
+         ,q.buffer_gets
+&ge_101_ ,q.sql_id
+&l_101_  ,q.child_number
+&l_101_  ,q.sql_text
+&ge_101_ ,q.sql_fulltext sql_text
+&l_92_   FROM v$session s, v$process p, v$sql q
+&l_92_   WHERE s.paddr = p.addr AND q.address(+) = s.sql_adress and q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number
+&ge_92_  FROM gv$session s INNER JOIN      gv$process p ON (p.inst_id = s.inst_id AND  p.addr = s.paddr)
+&ge_92_                    LEFT OUTER JOIN gv$sql     q ON (q.inst_id = s.inst_id
+&e_92_                                                  AND q.address = s.sql_adress AND q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number )
+&ge_101_                                                AND q.sql_id = s.sql_id AND q.child_number = s.sql_child_number )
+      )
+WHERE &where_ AND NVL(sql_text,'-') NOT LIKE '%dummy_value%'
 ;
 LINEAS_CODIGO
 
@@ -1229,7 +1247,7 @@ cat > longops.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 PROMPT
 PROMPT
@@ -1369,46 +1387,37 @@ WHERE rownum <= 5
 LINEAS_CODIGO
 
 cat > locks.sql  <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
 CLEAR BREAKS
 CLEAR COLUMNS
 
 SET LINES 200
 SET PAGES 10000
-COL event          FOR A40 TRUNC
-COL waiting_active FOR A25
-COL identifier     FOR A17
-COL username       FOR A15
-COL osuser         FOR A10
-COL machine        FOR A25
+COL event_blocker_blocked FOR A35
+COL username_sid_serial   FOR A30
+COL machine        FOR A25 TRUNC
 COL program        FOR A15 TRUNC
-COL sqlid_child    FOR A20
-COL max_blocked_time FOR A16
+COL sqlid_child    FOR A16
+COL cnt            FOR 999
+COL max_time       FOR A12
 
 WITH curr_session AS (SELECT * FROM v$session)
 SELECT
-       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_blocked_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_blocked_time
-      ,bl.waiters_cnt
-      ,se.sid||','||se.serial# identifier
-      ,NVL(se.username,'-'||pr.pname||'-') username
+       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
+      ,bl.max_blocked cnt
       ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
+      ,RPAD(NVL(se.username,pr.pname),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
+      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
       ,se.program
       ,se.machine
 FROM curr_session se, v$process pr
-    ,(SELECT c.blocking_session sid, COUNT(*) waiters_cnt, max(seconds_in_wait) max_blocked_time
-      FROM curr_session c group by c.blocking_session) bl
+    ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
+      FROM curr_session c group by c.blocking_session, c.event) bl
 WHERE pr.addr = se.paddr
   AND se.sid  = bl.sid
-ORDER BY max_blocked_time, waiters_cnt
+ORDER BY max_time, max_blocked
 ;
+
 LINEAS_CODIGO
 
 cat > lockt.sql <<'LINEAS_CODIGO'
@@ -1420,7 +1429,7 @@ cat > lockt.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 
 PROMPT
@@ -1512,6 +1521,9 @@ SET RECSEP WR
 LINEAS_CODIGO
 
 cat > lockt2.sql <<'LINEAS_CODIGO'
+set lines 200
+col sess_info for a120 word_wrap
+
 select
    lpad (lvl, 2)         || ' '
  ||lpad ('>', lvl*2, '-')|| ' '
@@ -1554,7 +1566,7 @@ cat > longops2.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 PROMPT
 PROMPT
@@ -1601,7 +1613,7 @@ cat > fte.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 PROMPT
 PROMPT
@@ -1646,7 +1658,7 @@ cat > sysa.x.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 VARIABLE interval_          NUMBER;
 
 VARIABLE f1_other          NUMBER;
@@ -1756,7 +1768,7 @@ cat > sysa.y.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 CLEAR BREAKS
 CLEAR COLUMNS
 SET LINES 200
@@ -1910,7 +1922,7 @@ cat > sysa.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set serveroutput on
 set echo off
 set term off
@@ -1972,7 +1984,7 @@ cat > sysm.x.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 CLEAR BREAKS
 CLEAR COLUMNS
 
@@ -2071,7 +2083,7 @@ cat > sysm.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set serveroutput on
 set echo off
 set term off
@@ -2133,7 +2145,7 @@ cat > ses.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set lines 200
 set pages 1000
 set heading on
@@ -2206,7 +2218,7 @@ cat > ashtop.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 --------------------------------------------------------------------------------
 --@ashtop sql_id session_type='FOREGROUND' sysdate-5*(1/24/60) sysdate
 --@ashtop sql_id session_type='FOREGROUND' to_date('20180627_0800','yyyymmdd_hh24mi') to_date('20180627_0810','yyyymmdd_hh24mi')
@@ -2314,7 +2326,7 @@ cat > dashtop.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 --Para ver distribucion de ejecucion de una sentencia, no olvidar descomentar la columna correspondiente
 --@dashtop sample_time,sql_opname,sql_id,event "sql_id='7u3j3x0fahyaw'" "to_date('20180804_0000','yyyymmdd_hh24mi')" "to_date('20180804_1200','yyyymmdd_hh24mi')"
 --
@@ -2412,7 +2424,7 @@ cat > tiempo_rollback.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 -------------------------------------------------------------------------------
 --- Script: calculate_rollback_time.sql
 --- Copyright: (c)  Daniel Alberto Enriquez García
@@ -2437,7 +2449,8 @@ set term off;
 variable SID_ number;
 exec :SID_:='&1';
 set term on
-declare
+--        Nombre:
+DECLARE
  cursor tx is
 SELECT s.inst_id,s.sid,s.serial#,s.username,
    t.used_ublk,
@@ -2506,12 +2519,19 @@ to_char(cast(numtodsinterval(used_ublk2/(used_ublk1 - used_ublk2)/6/60/24,'DAY')
 into remaining_time
 from dual;
 
+/*
 select q.sql_id, replace(q.SQL_TEXT,chr(0)), program, OSUSER
 into  xsqlid,  xsql_text, xprogram , xosuser
 from v$session s,v$sql q
 where s.PREV_SQL_ADDR = q.address
 and s.PREV_HASH_VALUE = q.hash_value
 and s.sid = xsid
+and s.serial#=xserial;
+*/
+select '', '', program, OSUSER
+into  xsqlid,  xsql_text, xprogram , xosuser
+from v$session s
+where s.sid = xsid
 and s.serial#=xserial;
 
  if used_ublk2 < used_ublk1
@@ -2531,6 +2551,7 @@ and s.serial#=xserial;
  'ESTIMATED FINISH TIME: '||to_char(sysdate + used_ublk2 / (used_ublk1 - used_ublk2) / 6 / 60 / 24,'DD-MON-YYYY HH24:MI:SS'
  )
    );
+/*
    sys.dbms_output.put_line
    (
  'COMMAND:               '||commande||chr(10)||
@@ -2539,9 +2560,11 @@ and s.serial#=xserial;
  'SQL_ID:                '||xsqlid||chr(10)||
  'SQL_TEXT:              '||xsql_text
    );
+*/
  end if;
 end;
 /
+prompt
 prompt
 LINEAS_CODIGO
 
@@ -2600,7 +2623,7 @@ cat > creados.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set lines 200
 set pages 1000
 set feed on
@@ -2626,7 +2649,7 @@ cat > xplan.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 180
 SET PAGES 1000
 
@@ -2644,11 +2667,12 @@ COLUMN io_cost FORMAT A8
 COLUMN rows_ heading "ROWS" FORMAT A8
 
 clear breaks
-break on sql_id on child_number skip 2
+break on sql_id on child_number on hash_value skip 2
 undefine 1
 
 SELECT
  p.sql_id
+,p.hash_value
 ,p.child_number
 ,p.id
 ,LPAD(' ',p.depth,' ')||p.operation||' '||p.options operation
@@ -2699,7 +2723,7 @@ cat > allxplan.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 180
 SET PAGES 1000
 
@@ -2716,7 +2740,7 @@ COLUMN bytes FORMAT A8
 COLUMN io_cost FORMAT A8
 
 clear breaks
-break on sql_id on child_number skip 2
+break on sql_id on child_number on plan_hash_value skip 2
 undefine 1
 
 SELECT
@@ -2750,7 +2774,7 @@ cat > undefine.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 UNDEFINE 1
 UNDEFINE 2
 UNDEFINE 3
@@ -2782,7 +2806,7 @@ cat > sqlx.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 150
 SET PAGES 1000
 COLUMN cost_order NOPRINT
@@ -2830,7 +2854,7 @@ cat > sga.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set lines 100
 col "Main SGA Areas" for a17
 col "Pool" for a15
@@ -2928,7 +2952,7 @@ cat > topa.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 --------------------------------------------------------------------------------
 --
 -- Archivo  :   topa.sql
@@ -3558,7 +3582,7 @@ cat > tseg.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set verify off
 PROMPT
 
@@ -3603,7 +3627,7 @@ cat > rlimit.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 set lines 200
 
 clear breaks
@@ -3623,7 +3647,7 @@ cat > miash.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 10000
 
@@ -3679,7 +3703,7 @@ cat > indcolumns.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 select
    t.owner
   ,t.table_name
@@ -3710,7 +3734,7 @@ cat > tx.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 180
 SET PAGES 1000
 
@@ -3749,7 +3773,7 @@ cat > swd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET ECHO OFF
 CLEAR BREAKS
 CLEAR COLUMNS
@@ -3807,7 +3831,7 @@ cat > loadp60.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 col short_name  format a20              heading 'Load Profile'
 col per_sec     format 999,999,999.9    heading 'Per Second'
 col per_tx      format 999,999,999.9    heading 'Per Transaction'
@@ -3873,7 +3897,7 @@ cat > tsd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -4126,7 +4150,7 @@ cat > dfd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -4297,7 +4321,7 @@ cat > segd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -4561,7 +4585,7 @@ cat > tabd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -5056,7 +5080,7 @@ cat > indd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -5463,7 +5487,7 @@ cat > userd.sql <<'LINEAS_CODIGO'
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 200
 SET PAGES 0
 SET VERIFY OFF
@@ -5724,3 +5748,48 @@ LINEAS_CODIGO
 #    echo "${lineaConcatenada}";
 # }
 # cuerpo >> salida-final.txt
+
+cat > tdisco.sql <<'LINEAS_CODIGO'
+set lines 200
+col begin_time for a25 heading "Fecha|Inicio"
+col max_read_avg   for a20 heading "Promedio|Maximo|Lectura"
+col min_read_avg   for a20 heading "Promedio|Minimo|Lectura"
+col avg_read_time  for a20 heading "Promedio|Tiempo|Lectura"
+col max_write_avg  for a20 heading "Promedio|Maximo|Escritura"
+col min_write_avg  for a20 heading "Promedio|Minimo|Escritura"
+col avg_write_time for a20 heading "Promedio|Tiempo|Escritura"
+
+--Las metricas que da Oracle son en Centesimas de segundo
+SELECT
+   to_char(begin_time,'yyyy-mm-dd hh24:mi:ss') begin_time
+  ,case when max(average_read_time) <         100 then to_char(max(average_read_time),'9G990D99')||' cs'
+        when max(average_read_time) <    (100*60) then to_char(max(average_read_time),'9G990D99')||' s'
+        when max(average_read_time) < (100*60*60) then to_char(max(average_read_time),'9G990D99')||' min' 
+   end max_read_avg
+  ,case when min(average_read_time) <         100 then to_char(min(average_read_time),'9G990D99')||' cs'
+        when min(average_read_time) <    (100*60) then to_char(min(average_read_time),'9G990D99')||' s'
+        when min(average_read_time) < (100*60*60) then to_char(min(average_read_time),'9G990D99')||' min' 
+   end min_read_avg
+  ,case when avg(average_read_time) <         100 then to_char(avg(average_read_time),'9G990D99')||' cs'
+        when avg(average_read_time) <    (100*60) then to_char(avg(average_read_time),'9G990D99')||' s'
+        when avg(average_read_time) < (100*60*60) then to_char(avg(average_read_time),'9G990D99')||' min' 
+   end avg_read_time
+  ,case when max(average_write_time) <         100 then to_char(max(average_write_time),'9G990D99')||' cs'
+        when max(average_write_time) <    (100*60) then to_char(max(average_write_time),'9G990D99')||' s'
+        when max(average_write_time) < (100*60*60) then to_char(max(average_write_time),'9G990D99')||' min' 
+   end max_write_avg
+  ,case when min(average_write_time) <         100 then to_char(min(average_write_time),'9G990D99')||' cs'
+        when min(average_write_time) <    (100*60) then to_char(min(average_write_time),'9G990D99')||' s'
+        when min(average_write_time) < (100*60*60) then to_char(min(average_write_time),'9G990D99')||' min' 
+   end min_write_avg
+  ,case when avg(average_write_time) <         100 then to_char(avg(average_write_time),'9G990D99')||' cs'
+        when avg(average_write_time) <    (100*60) then to_char(avg(average_write_time),'9G990D99')||' s'
+        when avg(average_write_time) < (100*60*60) then to_char(avg(average_write_time),'9G990D99')||' min' 
+   end avg_write_time
+FROM v$filemetric_history
+GROUP BY
+   begin_time
+  ,end_time
+ORDER BY 1
+;
+LINEAS_CODIGO

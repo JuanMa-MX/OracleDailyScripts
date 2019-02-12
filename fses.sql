@@ -72,40 +72,56 @@ COL info_session FOR A80
 ACCEPT where_ CHAR DEFAULT '1=1' PROMPT 'Sentencia WHERE? sid spid [1=1]: ';
 
 SELECT 'dummy_value' dummy_value,
-&l_92_ 'IDENTIFIER  : ' || s.sid || ',' || s.serial# || CHR(10) ||
-&ge_92_ 'IDENTIFIER  : ' || s.sid || ',' || s.serial# || ',' ||'@'||s.inst_id || CHR(10) ||
-'LOGON TIME  : ' || TO_CHAR(s.logon_time,'YYYY-MON-DD HH24:MI:SS') || CHR(10) ||
-'STATUS      : ' || s.status || CHR(10) ||
-&ge_112_  'USERNAME    : ' ||NVL(s.username,'-|'||p.pname||'|-') || CHR(10) ||
-&l_112_   'USERNAME    : ' || s.username || CHR(10) ||
-'SCHEMA      : ' || s.schemaname || CHR(10) ||
-'OSUSER      : ' || s.osuser || CHR(10) ||
-'MODULE      : ' || s.program || CHR(10) ||
-'ACTION      : ' || s.schemaname || CHR(10) ||
-'CLIENT INFO : ' || s.client_info || CHR(10) ||
-'PROGRAM     : ' || s.program || CHR(10) ||
-'SPID        : ' || p.spid || CHR(10) ||
-'MACHINE     : ' || s.machine || CHR(10) ||
-'TYPE        : ' || s.type || CHR(10) ||
-'TERMINAL    : ' || s.terminal || CHR(10) ||
-'CPU         : ' || q.cpu_time/1e6 || CHR(10) ||
-'ELAPSED_TIME: ' || q.elapsed_time/1e6 || CHR(10) ||
-'BUFFER_GETS : ' || q.buffer_gets || CHR(10) ||
-&l_101_  'SQL_ID      : ' || s.sql_address||'-'||s.sql_hash_value || CHR(10) ||
-&ge_101_ 'SQL_ID      : ' || q.sql_id || CHR(10) ||
-&l_101_  'CHILD_NUM   : ' || q.child_number || CHR(10) ||
-&ge_101_ 'CHILD_NUM   : ' || s.sql_child_number || CHR(10) ||
+&l_92_ 'IDENTIFIER  : ' || sid || ',' || serial# || CHR(10) ||
+&ge_92_ 'IDENTIFIER  : ' || sid || ',' || serial# || ',' ||'@'||inst_id || CHR(10) ||
+'LOGON TIME  : ' || TO_CHAR(logon_time,'YYYY-MON-DD HH24:MI:SS') || CHR(10) ||
+'STATUS      : ' || status || CHR(10) ||
+&ge_112_  'USERNAME    : ' ||NVL(username,'-|'||pname||'|-') || CHR(10) ||
+&l_112_   'USERNAME    : ' || NVL(username,'-|BGProcess|-') || CHR(10) ||
+'SCHEMA      : ' || schemaname || CHR(10) ||
+'OSUSER      : ' || osuser || CHR(10) ||
+'MODULE      : ' || module || CHR(10) ||
+'ACTION      : ' || action || CHR(10) ||
+'CLIENT INFO : ' || client_info || CHR(10) ||
+'PROGRAM     : ' || program || CHR(10) ||
+'SPID        : ' || spid || CHR(10) ||
+'MACHINE     : ' || machine || CHR(10) ||
+'TYPE        : ' || type || CHR(10) ||
+'TERMINAL    : ' || terminal || CHR(10) ||
+'CPU         : ' || cpu_time/1e6 || CHR(10) ||
+'ELAPSED_TIME: ' || elapsed_time/1e6 || CHR(10) ||
+'BUFFER_GETS : ' || buffer_gets || CHR(10) ||
+&l_101_  'SQL_ID      : ' || sql_address||'-'||sql_hash_value || CHR(10) ||
+&ge_101_ 'SQL_ID      : ' || sql_id || CHR(10) ||
+&l_101_  'CHILD_NUM   : ' || child_number || CHR(10) ||
+&ge_101_ 'CHILD_NUM   : ' || sql_child_number || CHR(10) ||
 &l_111_  'START_TIME  : ' || 'UNKNOWN' || CHR(10) ||
-&ge_111_ 'START_TIME  : ' || TO_CHAR(s.sql_exec_start,'yyyy-mm-dd hh24:mi') || CHR(10) ||
-&l_101_  'SQL_TEXT    : ' || q.sql_text || CHR(10) ||
-&ge_101_ 'SQL_TEXT    : ' || q.sql_fulltext || CHR(10) ||
+&ge_111_ 'START_TIME  : ' || TO_CHAR(sql_exec_start,'yyyy-mm-dd hh24:mi') || CHR(10) ||
+'SQL_TEXT    : ' || sql_text || CHR(10) ||
 '--------------------------------------------------------------------------------'
 info_session
-&l_92_  FROM (SELECT * FROM v$session WHERE &where_ ) s, v$process p, v$sql q
-&l_92_  WHERE s.paddr = p.addr AND q.address(+) = s.sql_adress and q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number
-&ge_92_ FROM (SELECT * FROM gv$session WHERE &where_ ) s INNER JOIN gv$process p ON (p.inst_id = s.inst_id AND  p.addr = s.paddr)
-&ge_92_                   LEFT OUTER JOIN gv$sql q ON (q.inst_id = s.inst_id
-&e_92_                                             AND q.address = s.sql_adress AND q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number )
-&ge_101_                                           AND q.sql_id = s.sql_id AND q.child_number = s.sql_child_number )
-WHERE NVL(q.sql_text,'-') NOT LIKE '%dummy_value%'
+FROM (   SELECT 
+          s.sid,s.serial#,s.logon_time,s.status,s.username,s.schemaname,s.osuser
+         ,s.module,s.action,s.client_info,s.program,s.machine,s.type,s.terminal
+&l_101_  ,s.sql_address,s.sql_hash_value
+&ge_101_ ,s.sql_child_number
+&ge_111_ ,s.sql_exec_start
+&ge_92_  ,s.inst_id
+         ,p.spid
+&ge_112_ ,p.pname
+         ,q.cpu_time
+         ,q.elapsed_time
+         ,q.buffer_gets
+&ge_101_ ,q.sql_id
+&l_101_  ,q.child_number
+&l_101_  ,q.sql_text
+&ge_101_ ,q.sql_fulltext sql_text
+&l_92_   FROM v$session s, v$process p, v$sql q
+&l_92_   WHERE s.paddr = p.addr AND q.address(+) = s.sql_adress and q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number
+&ge_92_  FROM gv$session s INNER JOIN      gv$process p ON (p.inst_id = s.inst_id AND  p.addr = s.paddr)
+&ge_92_                    LEFT OUTER JOIN gv$sql     q ON (q.inst_id = s.inst_id
+&e_92_                                                  AND q.address = s.sql_adress AND q.hash_value = s.sql_hash_value AND q.child_number = s.sql_child_number )
+&ge_101_                                                AND q.sql_id = s.sql_id AND q.child_number = s.sql_child_number )
+      )
+WHERE &where_ AND NVL(sql_text,'-') NOT LIKE '%dummy_value%'
 ;

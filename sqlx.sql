@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 150
 SET PAGES 1000
 COLUMN cost_order NOPRINT

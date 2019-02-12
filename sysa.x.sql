@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 VARIABLE interval_          NUMBER;
 
 VARIABLE f1_other          NUMBER;

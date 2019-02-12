@@ -72,6 +72,7 @@ accept where_ char default '1=1' prompt 'Sentencia WHERE? &prompt_where_ [1=1]: 
 SELECT
  waiting_active
 ,event
+,status
 ,&columns_
 FROM
 (
@@ -90,7 +91,8 @@ SELECT
 &ge_101_  ||TO_CHAR(CAST(numtodsinterval(s.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) waiting_active
 &l_101_  ,w.event
 &ge_101_ ,s.event
-&ge_92_  ,s.sid||','||s.serial#||'@'||s.inst_id identifier
+,s.status
+&ge_92_  ,s.sid||','||s.serial#||',@'||s.inst_id identifier
 &l_92_   ,s.sid||','||s.serial# identifier
 &ge_112_  ,NVL(s.username,'-|'||p.pname||'|-') username
 &l_112_   ,NVL(s.username,'-|ORACLE|-') username

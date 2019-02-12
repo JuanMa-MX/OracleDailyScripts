@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 180
 SET PAGES 1000
 
@@ -23,7 +23,7 @@ COLUMN bytes FORMAT A8
 COLUMN io_cost FORMAT A8
 
 clear breaks
-break on sql_id on child_number skip 2
+break on sql_id on child_number on plan_hash_value skip 2
 undefine 1
 
 SELECT

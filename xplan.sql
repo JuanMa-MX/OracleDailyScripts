@@ -6,7 +6,7 @@
 --Licenciamiento:
 --        Creado:
 --       Soporte: johnxjean@gmail.com
---Support: johnxjean@gmail.com
+
 SET LINES 180
 SET PAGES 1000
 
@@ -24,11 +24,12 @@ COLUMN io_cost FORMAT A8
 COLUMN rows_ heading "ROWS" FORMAT A8
 
 clear breaks
-break on sql_id on child_number skip 2
+break on sql_id on child_number on hash_value skip 2
 undefine 1
 
 SELECT
  p.sql_id
+,p.hash_value
 ,p.child_number
 ,p.id
 ,LPAD(' ',p.depth,' ')||p.operation||' '||p.options operation
