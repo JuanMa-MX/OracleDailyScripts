@@ -1,10 +1,10 @@
 #Crear el archivo deploy.sh y copiar & pegar este contenido
 #Para crear los script, ejecutar: sh deploy.sh
 
-mkdir -p ${HOME}/.oracle
+mkdir -p .oracle
 
 
-cd ${HOME}/.oracle
+cd .oracle
 
 
 cat > repeat.sql <<'LINEAS_CODIGO'
@@ -351,35 +351,34 @@ cat > sqls.sql <<'LINEAS_CODIGO'
 --        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
 
-SET ECHO OFF
-PROMPT
-PROMPT
-PROMPT ==================== [ Conteo de Sesiones por sentencia SQL ] ====================
-PROMPT
+CLEAR BREAKS
+CLEAR COLUMNS
 
 SET LINES 200
-SET PAGES 1000
+SET PAGES 10000
+COL event_blocker_blocked FOR A35
+COL username_sid_serial   FOR A30
+COL machine        FOR A25 TRUNC
+COL program        FOR A15 TRUNC
+COL sqlid_child    FOR A16
+COL cnt            FOR 999
+COL max_time       FOR A12
 
-CLEAR COLUMNS
-CLEAR BREAKS
-
-COMPUTE SUM LABEL 'Total en Ejecucion' OF CONTEO ON REPORT
-BREAK ON REPORT
-
-COL sql_text FOR a60
-
-COL sql_id FOR A20
-COL count  FOR 999,990
-
-SELECT s.sql_id
-  ,COUNT(*) conteo
-  ,sqla.sql_text
-FROM gv$session s, v$sqlarea sqla
-WHERE s.state = 'WAITING'
-AND s.sql_id IS NOT NULL
-AND sqla.sql_id=s.sql_id
-GROUP BY s.sql_id, sqla.sql_text
-ORDER BY 2
+WITH curr_session AS (SELECT * FROM v$session)
+SELECT
+       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
+      ,bl.max_blocked cnt
+      ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
+      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
+      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
+      ,se.program
+      ,se.machine
+FROM curr_session se
+    ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
+      FROM curr_session c group by c.blocking_session, c.event) bl
+WHERE se.sid  = bl.sid
+ORDER BY max_time, max_blocked
 ;
 
 LINEAS_CODIGO
@@ -1405,16 +1404,15 @@ SELECT
        TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
       ,bl.max_blocked cnt
       ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
-      ,RPAD(NVL(se.username,pr.pname),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
        RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
       ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
       ,se.program
       ,se.machine
-FROM curr_session se, v$process pr
+FROM curr_session se
     ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
       FROM curr_session c group by c.blocking_session, c.event) bl
-WHERE pr.addr = se.paddr
-  AND se.sid  = bl.sid
+WHERE se.sid  = bl.sid
 ORDER BY max_time, max_blocked
 ;
 
@@ -1522,7 +1520,7 @@ LINEAS_CODIGO
 
 cat > lockt2.sql <<'LINEAS_CODIGO'
 set lines 200
-col sess_info for a120 word_wrap
+col sess_info for a170 word_wrap
 
 select
    lpad (lvl, 2)         || ' '
@@ -3481,94 +3479,129 @@ SELECT * FROM v$resource_limit;
 SET ECHO OFF
 PROMPT
 PROMPT
-PROMPT ==================== [ Lock tree ] ====================
+PROMPT ==================== [ Lock Summary ] ====================
 PROMPT
 
-SET LINES 200
-SET PAGES 1000
-SET RECSEP OFF
-
-CLEAR COLUMNS
 CLEAR BREAKS
+CLEAR COLUMNS
 
-COLUMN chain_id NOPRINT
-COLUMN N NOPRINT
-COLUMN l NOPRINT
-COLUMN root NOPRINT
+SET LINES 200
+SET PAGES 10000
+COL event_blocker_blocked FOR A35
+COL username_sid_serial   FOR A30
+COL machine        FOR A25 TRUNC
+COL program        FOR A15 TRUNC
+COL sqlid_child    FOR A16
+COL cnt            FOR 999
+COL max_time       FOR A12
 
-COLUMN event            FOR A40 WORD_WRAP
-COLUMN waiting_active   FOR A25
-COLUMN graph FORMAT A10
-COLUMN identifier       FOR A17
-COLUMN username         FOR A15
-COLUMN osuser           FOR A10
-COLUMN machine          FOR A25
-COLUMN program          FOR A15 TRUNC
-
-
-BREAK ON root SKIP 3
-COMPUTE COUNT LABEL 'Total' OF root ON root
-
-WITH
-w AS
-(
- SELECT chain_id
-   ,ROWNUM n
-   ,LEVEL l
-   ,CONNECT_BY_ROOT w.sid root
-   --
-   --
-   ,LPAD(' ',LEVEL,' ')
-   ||'> '||w.wait_event_text
-   ||' '
-   ||s.sql_id
-   ||CASE WHEN w.wait_event_text LIKE 'enq: TM%'
-  THEN ' mode '
- ||DECODE(w.p1 ,1414332418,'Row-S' ,1414332419,'Row-X' ,1414332420,'Share' ,1414332421,'Share RX' ,1414332422,'eXclusive')
- ||( SELECT ' '||object_type||' "'||owner||'"."'||object_name||'" ' FROM all_objects WHERE object_id=w.p2 )
-  WHEN w.wait_event_text LIKE 'enq: TX%'
-  THEN (SELECT ' '
- ||object_type
- ||' "'||owner||'"."'||object_name||'"'
- ||' '
- ||dbms_rowid.rowid_create(1,data_object_id,relative_fno,w.row_wait_block#,w.row_wait_row#)
-FROM all_objects, dba_data_files
-WHERE object_id = w.row_wait_obj# AND w.row_wait_file# = file_id
-)
- END event
-   ,TO_CHAR(CAST(numtodsinterval(w.in_wait_secs, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0)))
-   ||' '
-   ||TO_CHAR(CAST(numtodsinterval(s.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0)))
-   waiting_active
-   ,LPAD('+',LEVEL,'+')||NVL(LEVEL,1) graph
-  ,s.sid||','||s.serial#||'@'||s.inst_id identifier
-  ,NVL(s.username,'-|'||p.pname||'|-') username
-  ,s.osuser
-  ,CASE WHEN INSTR(s.machine,'.') > 0
-THEN SUBSTR(s.machine,1,INSTR(s.machine,'.'))
-ELSE s.machine
-END machine
-  ,CASE WHEN INSTR(s.program,'@') > 0
-THEN SUBSTR(s.program,1,INSTR(s.program,'@')-1)
-ELSE s.program
-   END
-   ||
-   CASE WHEN INSTR(s.program,')') > 0
-THEN SUBSTR(s.program,INSTR(s.program,'('),INSTR(s.program,')')-INSTR(s.program,'(')+1)
-ELSE ''
-   END program
- FROM v$wait_chains w JOIN gv$session s ON (s.sid = w.sid AND s.serial# = w.sess_serial# AND s.inst_id = w.instance)
-   JOIN gv$process p ON (s.inst_id = p.inst_id AND s.paddr = p.addr)
- CONNECT BY PRIOR w.sid = w.blocker_sid AND PRIOR w.sess_serial# = w.blocker_sess_serial# AND PRIOR w.instance = w.blocker_instance
- START WITH w.blocker_sid IS NULL
-)
-SELECT *
-FROM w
-WHERE chain_id IN (SELECT chain_id FROM w GROUP BY chain_id HAVING MAX(waiting_active) >= '+00 00:00:10' AND MAX(l) > 1 )
-ORDER BY root, graph DESC, waiting_active DESC
+WITH curr_session AS (SELECT * FROM v$session)
+SELECT
+       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
+      ,bl.max_blocked cnt
+      ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
+      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
+      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
+      ,se.program
+      ,se.machine
+FROM curr_session se
+    ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
+      FROM curr_session c group by c.blocking_session, c.event) bl
+WHERE se.sid  = bl.sid
+ORDER BY max_time, max_blocked
 ;
 
-SET RECSEP WR
+SET ECHO OFF
+PROMPT
+PROMPT
+PROMPT ==================== [ File Metric History ] ====================
+PROMPT
+
+CLEAR BREAKS
+CLEAR COLUMNS
+
+set lines 200
+col begin_time     for a25 heading "Fecha|Inicio"
+col max_read_avg   for a12 heading "Promedio|Maximo|Lectura"
+col min_read_avg   for a12 heading "Promedio|Minimo|Lectura"
+col avg_read_time  for a12 heading "Promedio|Tiempo|Lectura"
+col max_write_avg  for a12 heading "Promedio|Maximo|Escritura"
+col min_write_avg  for a12 heading "Promedio|Minimo|Escritura"
+col avg_write_time for a12 heading "Promedio|Tiempo|Escritura"
+
+--Las metricas que da Oracle son en Centesimas de segundo
+SELECT
+   to_char(begin_time,'yyyy-mm-dd hh24:mi:ss') begin_time
+  ,lpad(case when max(average_read_time)  < (         100) then to_char(max(average_read_time)            ,'9G990D99')||'c'
+        when max(average_read_time)       < (      100*60) then to_char(max(average_read_time/(100))      ,'9G990D99')||'s'
+        when max(average_read_time)       < (   100*60*60) then to_char(max(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_read_time)       < (100*60*60*60) then to_char(max(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_read_avg
+  ,lpad(case when min(average_read_time)  < (         100) then to_char(min(average_read_time)            ,'9G990D99')||'c'
+        when min(average_read_time)       < (      100*60) then to_char(min(average_read_time/(100))      ,'9G990D99')||'s'
+        when min(average_read_time)       < (   100*60*60) then to_char(min(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_read_time)       < (100*60*60*60) then to_char(min(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_read_avg
+  ,lpad(case when avg(average_read_time)  < (         100) then to_char(avg(average_read_time)            ,'9G990D99')||'c'
+        when avg(average_read_time)       < (      100*60) then to_char(avg(average_read_time/(100))      ,'9G990D99')||'s'
+        when avg(average_read_time)       < (   100*60*60) then to_char(avg(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_read_time)       < (100*60*60*60) then to_char(avg(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_read_time
+  ,lpad(case when max(average_write_time) < (         100) then to_char(max(average_write_time)            ,'9G990D99')||'c'
+        when max(average_write_time)      < (      100*60) then to_char(max(average_write_time/(100))      ,'9G990D99')||'s'
+        when max(average_write_time)      < (   100*60*60) then to_char(max(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_write_time)      < (100*60*60*60) then to_char(max(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_write_avg
+  ,lpad(case when min(average_write_time) < (         100) then to_char(min(average_write_time)            ,'9G990D99')||'c'
+        when min(average_write_time)      < (      100*60) then to_char(min(average_write_time/(100))      ,'9G990D99')||'s'
+        when min(average_write_time)      < (   100*60*60) then to_char(min(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_write_time)      < (100*60*60*60) then to_char(min(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_write_avg
+  ,lpad(case when avg(average_write_time) < (         100) then to_char(avg(average_write_time)            ,'9G990D99')||'c'
+        when avg(average_write_time)      < (      100*60) then to_char(avg(average_write_time/(100))      ,'9G990D99')||'s'
+        when avg(average_write_time)      < (   100*60*60) then to_char(avg(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_write_time)      < (100*60*60*60) then to_char(avg(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_write_time
+FROM v$filemetric_history
+GROUP BY
+   begin_time
+  ,end_time
+ORDER BY 1
+;
+
+
+PROMPT
+PROMPT
+PROMPT ==================== [ Existencia de Backups ] ====================
+PROMPT
+
+CLEAR BREAKS
+CLEAR COLUMNS
+
+set lines 200
+
+col logn_time for a25
+col sid_serial for a20
+col username for a20
+col backup_type for a15
+col job_name for a30
+
+select
+   to_char(s.logon_time,'yyyy-mm-dd hh24:mi:ss') logon_time
+  ,s.status
+  ,s.username
+  ,s.sid||','||s.serial# sid_serial
+  ,case when s.program like 'rman%'                       then 'RMAN'
+        when s.program like 'ude%' or s.program like '%DM%' or s.program like '%DW%' then 'DATAPUMP'
+        else '-'
+   end backup_type
+  ,dps.job_name job_name
+from v$session s, dba_datapump_sessions dps
+where (program like 'rman%' or program like 'ude%' or program like '%DM%' or program like '%DW%')
+   and dps.saddr(+) = s.saddr
+order by backup_type, logon_time
+;
 
 LINEAS_CODIGO
 
@@ -3888,1801 +3921,248 @@ select lpad(short_name, 20, ' ') short_name
 set colsep ' '
 LINEAS_CODIGO
 
-cat > tsd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
 
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
+cat > dbat.sql <<'LINEAS_CODIGO'
+clear columns
+clear breaks
 
-CLEAR BREAKS
-CLEAR COLUMNS
+set lines 200
+set serveroutput on
 
-UNDEFINE columns_
-UNDEFINE where_
+undefine columns_
 
-prompt
-prompt Listado de columnas:
-prompt
-PROMPT [ TABLESPACE_NAME  CONTENTS                 PREDICATE_EVALUATION     ]
-PROMPT [ BLOCK_SIZE       LOGGING                  ENCRYPTED                ]
-PROMPT [ INITIAL_EXTENT   FORCE_LOGGING            COMPRESS_FOR             ]
-PROMPT [ NEXT_EXTENT      EXTENT_MANAGEMENT        DEF_INMEMORY             ]
-PROMPT [ MIN_EXTENTS      ALLOCATION_TYPE          DEF_INMEMORY_PRIORITY    ]
-PROMPT [ MAX_EXTENTS      PLUGGED_IN               DEF_INMEMORY_DISTRIBUTE  ]
-PROMPT [ MAX_SIZE         SEGMENT_SPACE_MANAGEMENT DEF_INMEMORY_COMPRESSION ]
-PROMPT [ PCT_INCREASE     DEF_TAB_COMPRESSION      DEF_INMEMORY_DUPLICATE   ]
-PROMPT [ MIN_EXTLEN       RETENTION                                         ]
-PROMPT [ STATUS           BIGFILE                                           ]
-PROMPT
-PROMPT Comun [ TABLESPACE_NAME,CONTENTS,BIGFILE,BLOCK_SIZE,EXTENT_MANAGEMENT,ALLOCATION_TYPE,SEGMENT_SPACE_MANAGEMENT ]
-PROMPT
+set verify off
+set feedback off
+set pages 0
+set time off
+set timing off
 
-accept columns_ char default '*' -
-prompt 'Columnas a mostrar? [*]: '
-
-accept where_ char default '1=1' -
-prompt 'Where? [1=1]: '
-
-set term off
-
-column oracle_version new_value oracle_version_
-column ge_90 new_value ge_90_
-column ge_101 new_value ge_101_
-column ge_111 new_value ge_111_
-column ge_121 new_value ge_121_
-
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
-
---  define oracle_version_=9.1;
-
-select case when &oracle_version_ >= 9.0 then '' else '--' end ge_90 from v$instance;
-select case when &oracle_version_ >= 10.1 then '' else '--' end ge_101 from v$instance;
-select case when &oracle_version_ >= 11.1 then '' else '--' end ge_111 from v$instance;
-select case when &oracle_version_ >= 12.1 then '' else '--' end ge_121 from v$instance;
-
-COL TABLESPACE_NAME          NEW_VALUE TABLESPACE_NAME_
-COL BLOCK_SIZE               NEW_VALUE BLOCK_SIZE_
-COL INITIAL_EXTENT           NEW_VALUE INITIAL_EXTENT_
-COL NEXT_EXTENT              NEW_VALUE NEXT_EXTENT_
-COL MIN_EXTENTS              NEW_VALUE MIN_EXTENTS_
-COL MAX_EXTENTS              NEW_VALUE MAX_EXTENTS_
-COL MAX_SIZE                 NEW_VALUE MAX_SIZE_
-COL PCT_INCREASE             NEW_VALUE PCT_INCREASE_
-COL MIN_EXTLEN               NEW_VALUE MIN_EXTLEN_
-COL STATUS                   NEW_VALUE STATUS_
-COL CONTENTS                 NEW_VALUE CONTENTS_
-COL LOGGING                  NEW_VALUE LOGGING_
-COL FORCE_LOGGING            NEW_VALUE FORCE_LOGGING_
-COL EXTENT_MANAGEMENT        NEW_VALUE EXTENT_MANAGEMENT_
-COL ALLOCATION_TYPE          NEW_VALUE ALLOCATION_TYPE_
-COL PLUGGED_IN               NEW_VALUE PLUGGED_IN_
-COL SEGMENT_SPACE_MANAGEMENT NEW_VALUE SEGMENT_SPACE_MANAGEMENT_
-COL DEF_TAB_COMPRESSION      NEW_VALUE DEF_TAB_COMPRESSION_
-COL RETENTION                NEW_VALUE RETENTION_
-COL BIGFILE                  NEW_VALUE BIGFILE_
-COL PREDICATE_EVALUATION     NEW_VALUE PREDICATE_EVALUATION_
-COL ENCRYPTED                NEW_VALUE ENCRYPTED_
-COL COMPRESS_FOR             NEW_VALUE COMPRESS_FOR_
-COL DEF_INMEMORY             NEW_VALUE DEF_INMEMORY_
-COL DEF_INMEMORY_PRIORITY    NEW_VALUE DEF_INMEMORY_PRIORITY_
-COL DEF_INMEMORY_DISTRIBUTE  NEW_VALUE DEF_INMEMORY_DISTRIBUTE_
-COL DEF_INMEMORY_COMPRESSION NEW_VALUE DEF_INMEMORY_COMPRESSION_
-COL DEF_INMEMORY_DUPLICATE   NEW_VALUE DEF_INMEMORY_DUPLICATE_
-COL ORDENAR                  NEW_VALUE ORDENAR_
-
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLESPACE_NAME         ')) > 0 THEN ''   ELSE '--' END TABLESPACE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BLOCK_SIZE              ')) > 0 THEN ''   ELSE '--' END BLOCK_SIZE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INITIAL_EXTENT          ')) > 0 THEN ''   ELSE '--' END INITIAL_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NEXT_EXTENT             ')) > 0 THEN ''   ELSE '--' END NEXT_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MIN_EXTENTS             ')) > 0 THEN ''   ELSE '--' END MIN_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_EXTENTS             ')) > 0 THEN ''   ELSE '--' END MAX_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_SIZE                ')) > 0 THEN ''   ELSE '--' END MAX_SIZE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_INCREASE            ')) > 0 THEN ''   ELSE '--' END PCT_INCREASE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MIN_EXTLEN              ')) > 0 THEN ''   ELSE '--' END MIN_EXTLEN
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('STATUS                  ')) > 0 THEN ''   ELSE '--' END STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CONTENTS                ')) > 0 THEN ''   ELSE '--' END CONTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOGGING                 ')) > 0 THEN ''   ELSE '--' END LOGGING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FORCE_LOGGING           ')) > 0 THEN ''   ELSE '--' END FORCE_LOGGING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTENT_MANAGEMENT       ')) > 0 THEN ''   ELSE '--' END EXTENT_MANAGEMENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ALLOCATION_TYPE         ')) > 0 THEN ''   ELSE '--' END ALLOCATION_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PLUGGED_IN              ')) > 0 THEN ''   ELSE '--' END PLUGGED_IN
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_SPACE_MANAGEMENT')) > 0 THEN ''   ELSE '--' END SEGMENT_SPACE_MANAGEMENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_TAB_COMPRESSION     ')) > 0 THEN ''   ELSE '--' END DEF_TAB_COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('RETENTION               ')) > 0 THEN ''   ELSE '--' END RETENTION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BIGFILE                 ')) > 0 THEN ''   ELSE '--' END BIGFILE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PREDICATE_EVALUATION    ')) > 0 THEN ''   ELSE '--' END PREDICATE_EVALUATION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ENCRYPTED               ')) > 0 THEN ''   ELSE '--' END ENCRYPTED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('COMPRESS_FOR            ')) > 0 THEN ''   ELSE '--' END COMPRESS_FOR
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_INMEMORY            ')) > 0 THEN ''   ELSE '--' END DEF_INMEMORY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_INMEMORY_PRIORITY   ')) > 0 THEN ''   ELSE '--' END DEF_INMEMORY_PRIORITY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_INMEMORY_DISTRIBUTE ')) > 0 THEN ''   ELSE '--' END DEF_INMEMORY_DISTRIBUTE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_INMEMORY_COMPRESSION')) > 0 THEN ''   ELSE '--' END DEF_INMEMORY_COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEF_INMEMORY_DUPLICATE  ')) > 0 THEN ''   ELSE '--' END DEF_INMEMORY_DUPLICATE
-,CASE WHEN '&columns_' = '*'                                                                   THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
-
-set term on
-
-COL info FOR A80
-
-COL TABLESPACE_NAME          NOPRINT
-COL BLOCK_SIZE               NOPRINT
-COL INITIAL_EXTENT           NOPRINT
-COL NEXT_EXTENT              NOPRINT
-COL MIN_EXTENTS              NOPRINT
-COL MAX_EXTENTS              NOPRINT
-COL MAX_SIZE                 NOPRINT
-COL PCT_INCREASE             NOPRINT
-COL MIN_EXTLEN               NOPRINT
-COL STATUS                   NOPRINT
-COL CONTENTS                 NOPRINT
-COL LOGGING                  NOPRINT
-COL FORCE_LOGGING            NOPRINT
-COL EXTENT_MANAGEMENT        NOPRINT
-COL ALLOCATION_TYPE          NOPRINT
-COL PLUGGED_IN               NOPRINT
-COL SEGMENT_SPACE_MANAGEMENT NOPRINT
-COL DEF_TAB_COMPRESSION      NOPRINT
-COL RETENTION                NOPRINT
-COL BIGFILE                  NOPRINT
-COL PREDICATE_EVALUATION     NOPRINT
-COL ENCRYPTED                NOPRINT
-COL COMPRESS_FOR             NOPRINT
-COL DEF_INMEMORY             NOPRINT
-COL DEF_INMEMORY_PRIORITY    NOPRINT
-COL DEF_INMEMORY_DISTRIBUTE  NOPRINT
-COL DEF_INMEMORY_COMPRESSION NOPRINT
-COL DEF_INMEMORY_DUPLICATE   NOPRINT
-
-
-SELECT rownum, tbs.*
-FROM (
-SELECT
-                                      ''
-&ge_90_  &TABLESPACE_NAME_          ||LPAD(TRIM('TABLESPACE_NAME         '),25,' ')||' : '||TABLESPACE_NAME         ||CHR(10)
-&ge_90_  &STATUS_                   ||LPAD(TRIM('STATUS                  '),25,' ')||' : '||STATUS                  ||CHR(10)
-&ge_90_  &CONTENTS_                 ||LPAD(TRIM('CONTENTS                '),25,' ')||' : '||CONTENTS                ||CHR(10)
-&ge_101_ &BIGFILE_                  ||LPAD(TRIM('BIGFILE                 '),25,' ')||' : '||BIGFILE                 ||CHR(10)
-&ge_90_  &EXTENT_MANAGEMENT_        ||LPAD(TRIM('EXTENT_MANAGEMENT       '),25,' ')||' : '||EXTENT_MANAGEMENT       ||CHR(10)
-&ge_90_  &ALLOCATION_TYPE_          ||LPAD(TRIM('ALLOCATION_TYPE         '),25,' ')||' : '||ALLOCATION_TYPE         ||CHR(10)
-&ge_90_  &SEGMENT_SPACE_MANAGEMENT_ ||LPAD(TRIM('SEGMENT_SPACE_MANAGEMENT'),25,' ')||' : '||SEGMENT_SPACE_MANAGEMENT||CHR(10)
-&ge_111_ &COMPRESS_FOR_             ||LPAD(TRIM('COMPRESS_FOR            '),25,' ')||' : '||COMPRESS_FOR            ||CHR(10)
-&ge_90_  &BLOCK_SIZE_               ||LPAD(TRIM('BLOCK_SIZE              '),25,' ')||' : '||CASE WHEN BLOCK_SIZE < 1024     THEN BLOCK_SIZE||''
-&ge_90_  &BLOCK_SIZE_                                                                       WHEN BLOCK_SIZE < POWER(1024,2) THEN ROUND(BLOCK_SIZE/POWER(1024,1),1)||'K'
-&ge_90_  &BLOCK_SIZE_                                                                       WHEN BLOCK_SIZE < POWER(1024,3) THEN ROUND(BLOCK_SIZE/POWER(1024,2),1)||'M'
-&ge_90_  &BLOCK_SIZE_                                                                       WHEN BLOCK_SIZE < POWER(1024,4) THEN ROUND(BLOCK_SIZE/POWER(1024,3),1)||'G'
-&ge_90_  &BLOCK_SIZE_                                                                       WHEN BLOCK_SIZE < POWER(1024,5) THEN ROUND(BLOCK_SIZE/POWER(1024,4),1)||'T'
-&ge_90_  &BLOCK_SIZE_                                                                       END                     ||CHR(10)
-&ge_90_  &INITIAL_EXTENT_           ||LPAD(TRIM('INITIAL_EXTENT          '),25,' ')||' : '||CASE WHEN INITIAL_EXTENT < 1024     THEN INITIAL_EXTENT||''
-&ge_90_  &INITIAL_EXTENT_                                                                   WHEN INITIAL_EXTENT < POWER(1024,2) THEN ROUND(INITIAL_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &INITIAL_EXTENT_                                                                   WHEN INITIAL_EXTENT < POWER(1024,3) THEN ROUND(INITIAL_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &INITIAL_EXTENT_                                                                   WHEN INITIAL_EXTENT < POWER(1024,4) THEN ROUND(INITIAL_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &INITIAL_EXTENT_                                                                   WHEN INITIAL_EXTENT < POWER(1024,5) THEN ROUND(INITIAL_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &INITIAL_EXTENT_                                                                   END                     ||CHR(10)
-&ge_90_  &NEXT_EXTENT_              ||LPAD(TRIM('NEXT_EXTENT             '),25,' ')||' : '||CASE WHEN NEXT_EXTENT < 1024     THEN NEXT_EXTENT||''
-&ge_90_  &NEXT_EXTENT_                                                                      WHEN NEXT_EXTENT < POWER(1024,2) THEN ROUND(NEXT_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &NEXT_EXTENT_                                                                      WHEN NEXT_EXTENT < POWER(1024,3) THEN ROUND(NEXT_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &NEXT_EXTENT_                                                                      WHEN NEXT_EXTENT < POWER(1024,4) THEN ROUND(NEXT_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &NEXT_EXTENT_                                                                      WHEN NEXT_EXTENT < POWER(1024,5) THEN ROUND(NEXT_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &NEXT_EXTENT_                                                                      END                     ||CHR(10)
-&ge_90_  &MIN_EXTENTS_              ||LPAD(TRIM('MIN_EXTENTS             '),25,' ')||' : '||MIN_EXTENTS             ||CHR(10)
-&ge_90_  &MAX_EXTENTS_              ||LPAD(TRIM('MAX_EXTENTS             '),25,' ')||' : '||MAX_EXTENTS             ||CHR(10)
-&ge_111_ &MAX_SIZE_                 ||LPAD(TRIM('MAX_SIZE                '),25,' ')||' : '||CASE WHEN MAX_SIZE < 1024     THEN MAX_SIZE||''
-&ge_111_ &MAX_SIZE_                                                                         WHEN MAX_SIZE < POWER(1024,2) THEN ROUND(MAX_SIZE/POWER(1024,1),1)||'K'
-&ge_111_ &MAX_SIZE_                                                                         WHEN MAX_SIZE < POWER(1024,3) THEN ROUND(MAX_SIZE/POWER(1024,2),1)||'M'
-&ge_111_ &MAX_SIZE_                                                                         WHEN MAX_SIZE < POWER(1024,4) THEN ROUND(MAX_SIZE/POWER(1024,3),1)||'G'
-&ge_111_ &MAX_SIZE_                                                                         WHEN MAX_SIZE < POWER(1024,5) THEN ROUND(MAX_SIZE/POWER(1024,4),1)||'T'
-&ge_111_ &MAX_SIZE_                                                                         END                     ||CHR(10)
-&ge_90_  &PCT_INCREASE_             ||LPAD(TRIM('PCT_INCREASE            '),25,' ')||' : '||PCT_INCREASE            ||CHR(10)
-&ge_90_  &MIN_EXTLEN_               ||LPAD(TRIM('MIN_EXTLEN              '),25,' ')||' : '||CASE WHEN MIN_EXTLEN < 1024     THEN MIN_EXTLEN||''
-&ge_90_  &MIN_EXTLEN_                                                                       WHEN MIN_EXTLEN < POWER(1024,2) THEN ROUND(MIN_EXTLEN/POWER(1024,1),1)||'K'
-&ge_90_  &MIN_EXTLEN_                                                                       WHEN MIN_EXTLEN < POWER(1024,3) THEN ROUND(MIN_EXTLEN/POWER(1024,2),1)||'M'
-&ge_90_  &MIN_EXTLEN_                                                                       WHEN MIN_EXTLEN < POWER(1024,4) THEN ROUND(MIN_EXTLEN/POWER(1024,3),1)||'G'
-&ge_90_  &MIN_EXTLEN_                                                                       WHEN MIN_EXTLEN < POWER(1024,5) THEN ROUND(MIN_EXTLEN/POWER(1024,4),1)||'T'
-&ge_90_  &MIN_EXTLEN_                                                                       END                     ||CHR(10)
-&ge_90_  &LOGGING_                  ||LPAD(TRIM('LOGGING                 '),25,' ')||' : '||LOGGING                 ||CHR(10)
-&ge_90_  &FORCE_LOGGING_            ||LPAD(TRIM('FORCE_LOGGING           '),25,' ')||' : '||FORCE_LOGGING           ||CHR(10)
-&ge_90_  &PLUGGED_IN_               ||LPAD(TRIM('PLUGGED_IN              '),25,' ')||' : '||PLUGGED_IN              ||CHR(10)
-&ge_101_ &DEF_TAB_COMPRESSION_      ||LPAD(TRIM('DEF_TAB_COMPRESSION     '),25,' ')||' : '||DEF_TAB_COMPRESSION     ||CHR(10)
-&ge_101_ &RETENTION_                ||LPAD(TRIM('RETENTION               '),25,' ')||' : '||RETENTION               ||CHR(10)
-&ge_111_ &PREDICATE_EVALUATION_     ||LPAD(TRIM('PREDICATE_EVALUATION    '),25,' ')||' : '||PREDICATE_EVALUATION    ||CHR(10)
-&ge_111_ &ENCRYPTED_                ||LPAD(TRIM('ENCRYPTED               '),25,' ')||' : '||ENCRYPTED               ||CHR(10)
-&ge_121_ &DEF_INMEMORY_             ||LPAD(TRIM('DEF_INMEMORY            '),25,' ')||' : '||DEF_INMEMORY            ||CHR(10)
-&ge_121_ &DEF_INMEMORY_PRIORITY_    ||LPAD(TRIM('DEF_INMEMORY_PRIORITY   '),25,' ')||' : '||DEF_INMEMORY_PRIORITY   ||CHR(10)
-&ge_121_ &DEF_INMEMORY_DISTRIBUTE_  ||LPAD(TRIM('DEF_INMEMORY_DISTRIBUTE '),25,' ')||' : '||DEF_INMEMORY_DISTRIBUTE ||CHR(10)
-&ge_121_ &DEF_INMEMORY_COMPRESSION_ ||LPAD(TRIM('DEF_INMEMORY_COMPRESSION'),25,' ')||' : '||DEF_INMEMORY_COMPRESSION||CHR(10)
-&ge_121_ &DEF_INMEMORY_DUPLICATE_   ||LPAD(TRIM('DEF_INMEMORY_DUPLICATE  '),25,' ')||' : '||DEF_INMEMORY_DUPLICATE  ||CHR(10)
-info
-&ge_90_  &TABLESPACE_NAME_           ,TABLESPACE_NAME
-&ge_90_  &STATUS_                    ,STATUS
-&ge_90_  &CONTENTS_                  ,CONTENTS
-&ge_101_ &BIGFILE_                   ,BIGFILE
-&ge_90_  &EXTENT_MANAGEMENT_         ,EXTENT_MANAGEMENT
-&ge_90_  &ALLOCATION_TYPE_           ,ALLOCATION_TYPE
-&ge_90_  &SEGMENT_SPACE_MANAGEMENT_  ,SEGMENT_SPACE_MANAGEMENT
-&ge_111_ &COMPRESS_FOR_              ,COMPRESS_FOR
-&ge_90_  &BLOCK_SIZE_                ,BLOCK_SIZE
-&ge_90_  &INITIAL_EXTENT_            ,INITIAL_EXTENT
-&ge_90_  &NEXT_EXTENT_               ,NEXT_EXTENT
-&ge_90_  &MIN_EXTENTS_               ,MIN_EXTENTS
-&ge_90_  &MAX_EXTENTS_               ,MAX_EXTENTS
-&ge_111_ &MAX_SIZE_                  ,MAX_SIZE
-&ge_90_  &PCT_INCREASE_              ,PCT_INCREASE
-&ge_90_  &MIN_EXTLEN_                ,MIN_EXTLEN
-&ge_90_  &LOGGING_                   ,LOGGING
-&ge_90_  &FORCE_LOGGING_             ,FORCE_LOGGING
-&ge_90_  &PLUGGED_IN_                ,PLUGGED_IN
-&ge_101_ &DEF_TAB_COMPRESSION_       ,DEF_TAB_COMPRESSION
-&ge_101_ &RETENTION_                 ,RETENTION
-&ge_111_ &PREDICATE_EVALUATION_      ,PREDICATE_EVALUATION
-&ge_111_ &ENCRYPTED_                 ,ENCRYPTED
-&ge_121_ &DEF_INMEMORY_              ,DEF_INMEMORY
-&ge_121_ &DEF_INMEMORY_PRIORITY_     ,DEF_INMEMORY_PRIORITY
-&ge_121_ &DEF_INMEMORY_DISTRIBUTE_   ,DEF_INMEMORY_DISTRIBUTE
-&ge_121_ &DEF_INMEMORY_COMPRESSION_  ,DEF_INMEMORY_COMPRESSION
-&ge_121_ &DEF_INMEMORY_DUPLICATE_    ,DEF_INMEMORY_DUPLICATE
-FROM dba_tablespaces
-WHERE &where_
-&ORDENAR_ ORDER BY &columns_
-) tbs
-;
-
-CLEAR COLUMNS
-CLEAR BREAKS
-LINEAS_CODIGO
-
-cat > dfd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-COL info FOR A80
-
-UNDEFINE columns_
-UNDEFINE where_
+accept dba_table_ char default 'DBA_TABLES' -
+prompt 'Vista de DBA a consultar? [DBA_TABLES]: '
 
 prompt
-prompt Listado de columnas:
+prompt Listado de Columnas:
+prompt ==================================
 prompt
-PROMPT [ FILE_NAME       STATUS         INCREMENT_BY       ]
-PROMPT [ FILE_ID         RELATIVE_FNO   USER_BYTES         ]
-PROMPT [ TABLESPACE_NAME AUTOEXTENSIBLE USER_BLOCKS        ]
-PROMPT [ BYTES           MAXBYTES       ONLINE_STATUS      ]
-PROMPT [ BLOCKS          MAXBLOCKS      LOST_WRITE_PROTECT ]
-PROMPT
-PROMPT Comun [ TABLESPACE_NAME,FILE_NAME,BYTES,MAXBYTES,AUTOEXTENSIBLE ]
-PROMPT
 
+declare
+   ncols number(4);
+   tcols number(4);
+   nfils number(4);
+   multi number(4);
+   linea varchar2(1024);
+begin
+
+   select count(*) into tcols from (
+   select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_')
+   union all
+   select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_')
+   );
+
+   multi:=0;
+   while multi < tcols
+   loop
+      multi:=multi+4;
+   end loop;
+
+   nfils:=case when mod(tcols,4) = 0 then trunc(tcols/4) else floor(tcols/4) + 1 end;
+   linea:='';
+   ncols:=0;
+
+   if tcols < multi then
+      for tabla in (
+        select column_name, orden1, orden2 from (
+        select  column_name
+               ,rownum orden1
+               ,case when mod(rownum,nfils) > 0 then mod(rownum,nfils) else nfils end orden2
+        from (
+        select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_')
+        union all
+        select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_')
+        union all
+        select null from dual connect by level <= (multi - tcols)
+        order by column_name nulls last
+        ))
+        order by 3,1
+      )
+      loop
+         ncols:=ncols+1;
+         linea:=linea||'['||rpad(tabla.column_name,35,' ')||']';
+         if (ncols > 3) then
+            dbms_output.put_line(linea);
+            linea:='';
+            ncols:=0;
+         end if;
+      end loop;
+   else
+      for tabla in (
+        select column_name, orden1, orden2 from (
+        select  column_name
+               ,rownum orden1
+               ,case when mod(rownum,nfils) > 0 then mod(rownum,nfils) else nfils end orden2
+        from (
+        select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_')
+        union all
+        select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_')
+        order by column_name nulls last
+        ))
+        order by 3,1
+      )
+      loop
+         ncols:=ncols+1;
+         linea:=linea||'['||rpad(tabla.column_name,35,' ')||']';
+         if (ncols > 3) then
+            dbms_output.put_line(linea);
+            linea:='';
+            ncols:=0;
+         end if;
+      end loop;
+   end if;
+
+   dbms_output.put_line(linea);
+end;
+/
+
+
+PROMPT
+PROMPT
 accept columns_ char default '*' -
 prompt 'Columnas a mostrar? [*]: '
 
+PROMPT
+PROMPT
+accept distinct_ char default 'N' -
+prompt 'Distinct? Y|N [N]: '
+
+PROMPT
+PROMPT
 accept where_ char default '1=1' -
 prompt 'Where? [1=1]: '
 
 set term off
 
-column oracle_version new_value oracle_version_
-column ge_90 new_value ge_90_
-column ge_102 new_value ge_102_
-column ge_122 new_value ge_122_
+set trims on
+set lines 32000
+
+spool dbat.consulta.sql
+
+declare
+   linea varchar2(1024);
+begin
+   linea:='';
+   for tabla in (select 'ORDENAR' column_name from dual union all select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_') union all select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_') order by column_name)
+   loop
+      linea:='COLUMN '||tabla.column_name||' NEW_VALUE '||replace(tabla.column_name,'#','_')||'_';
+      dbms_output.put_line(linea);
+   end loop;
+end;
+/
+
+prompt
+prompt
+
+declare
+   linea varchar2(1024);
+begin
+   linea:='';
+   for tabla in (select 'ORDENAR' column_name from dual union all select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_') union all select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_') order by column_name)
+   loop
+      linea:='COLUMN '||tabla.column_name||' NOPRINT';
+      dbms_output.put_line(linea);
+   end loop;
+end;
+/
+
+prompt
+prompt
+
+select 'SELECT CASE WHEN '||''''||'&&columns_'||''''||' = '||''''||'*'||''''||' THEN '||''''||'--'||''''||' ELSE '||''''||''''||' END ORDENAR' from dual;
+
+declare
+   linea varchar2(1024);
+   space_columns varchar2(1024) := ' '||replace('&&columns_',',',' ')||' ';
+begin
+   linea:='';
+   for tabla in (select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_') union all select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_') order by column_name)
+   loop
+      linea:=',CASE WHEN '||''''||space_columns||''''||' = '||''''||' * '||''''||' OR INSTR(UPPER('||''''||space_columns||''''||'),'||''''||' '||''''||'||TRIM('||''''||tabla.column_name||''''||')) > 0'||   ' THEN '||''''||''''||' ELSE '||''''||'--'||''''||' END '||tabla.column_name;
+      dbms_output.put_line(linea);
+   end loop;
+end;
+/
+
+select 'FROM dual;' from dual;
+
+prompt
+prompt
+
+select 'set term on' from dual;
+
+select 'COL info FOR A80' from dual;
+
+prompt
+prompt
+
+select 'SELECT ROWNUM, tabs.* FROM ( SELECT '||''''||'''' from dual;
+
+declare
+   linea varchar2(1024);
+begin
+   linea:='';
+   for tabla in (select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_') union all select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_') order by column_name)
+   loop
+      if tabla.column_name in ('BLOCK_SIZE'
+                              ,'INITIAL_EXTENT'
+                              ,'NEXT_EXTENT'
+                              )
+                           or tabla.column_name LIKE '%BYTES%'
+      then
+         linea:=q'[&&]'||replace(tabla.column_name,'#','_')||'_'||' '||q'[||LPAD(']'||tabla.column_name||q'[',25,' ')]'||q'[||' : '||]'
+                ||q'[ CASE WHEN NVL(]'||tabla.column_name||q'[,0) < 1024     THEN NVL(]'||tabla.column_name||q'[,0)||'']'
+                     ||q'[ WHEN NVL(]'||tabla.column_name||q'[,0) < POWER(1024,2) THEN ROUND(NVL(]'||tabla.column_name||q'[,0)/POWER(1024,1),1)||'K']'
+                     ||q'[ WHEN NVL(]'||tabla.column_name||q'[,0) < POWER(1024,3) THEN ROUND(NVL(]'||tabla.column_name||q'[,0)/POWER(1024,2),1)||'M']'
+                     ||q'[ WHEN NVL(]'||tabla.column_name||q'[,0) < POWER(1024,4) THEN ROUND(NVL(]'||tabla.column_name||q'[,0)/POWER(1024,3),1)||'G']'
+                     ||q'[ WHEN NVL(]'||tabla.column_name||q'[,0) < POWER(1024,5) THEN ROUND(NVL(]'||tabla.column_name||q'[,0)/POWER(1024,4),1)||'T']'
+                     ||q'[ END ]'||q'[||CHR(10)]';
+      else
+         linea:=q'[&&]'||replace(tabla.column_name,'#','_')||'_'||' '||q'[||LPAD(']'||tabla.column_name||q'[',25,' ')]'||q'[||' : '||]'||q'[trim(to_char(]'||tabla.column_name||q'[))||CHR(10)]';
+      end if;
+
+      dbms_output.put_line(linea);
+   end loop;
+   dbms_output.put_line('info');
+end;
+/
+
+declare
+   linea varchar2(1024);
+begin
+   linea:='';
+   for tabla in (select column_name from dba_tab_columns where table_name=UPPER('&&dba_table_') union all select column_name from dba_tab_cols where table_name=LOWER('&&dba_table_') order by column_name)
+   loop
+      linea:=q'[&&]'||replace(tabla.column_name,'#','_')||'_'||' '||','||tabla.column_name;
+      dbms_output.put_line(linea);
+   end loop;
+end;
+/
 
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
+select 'FROM (SELECT '||DECODE(UPPER('&&distinct_'),'Y','DISTINCT','')||' '||q'[&&]'||'columns_'||' FROM '||q'[&&]'||'dba_table_ WHERE '||q'[&&]'||'where_ )' from dual;
+select q'[&&]'||'ORDENAR_ ORDER BY '||q'[&&]'||'columns_' from dual;
+select ') tabs ;' from dual;
 
---  define oracle_version_=9.1;
 
-select case when &oracle_version_ >= 9.0 then '' else '--' end ge_90 from v$instance;
-select case when &oracle_version_ >= 10.2 then '' else '--' end ge_102 from v$instance;
-select case when &oracle_version_ >= 12.2 then '' else '--' end ge_122 from v$instance;
+spool off
 
-COL FILE_NAME          NEW_VALUE FILE_NAME_
-COL FILE_ID            NEW_VALUE FILE_ID_
-COL TABLESPACE_NAME    NEW_VALUE TABLESPACE_NAME_
-COL BYTES              NEW_VALUE BYTES_
-COL BLOCKS             NEW_VALUE BLOCKS_
-COL STATUS             NEW_VALUE STATUS_
-COL RELATIVE_FNO       NEW_VALUE RELATIVE_FNO_
-COL AUTOEXTENSIBLE     NEW_VALUE AUTOEXTENSIBLE_
-COL MAXBYTES           NEW_VALUE MAXBYTES_
-COL MAXBLOCKS          NEW_VALUE MAXBLOCKS_
-COL INCREMENT_BY       NEW_VALUE INCREMENT_BY_
-COL USER_BYTES         NEW_VALUE USER_BYTES_
-COL USER_BLOCKS        NEW_VALUE USER_BLOCKS_
-COL ONLINE_STATUS      NEW_VALUE ONLINE_STATUS_
-COL LOST_WRITE_PROTECT NEW_VALUE LOST_WRITE_PROTECT_
-COL ORDENAR            NEW_VALUE ORDENAR_
+spool salida.txt
+@dbat.consulta.sql
+spool off
 
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FILE_NAME         ')) > 0 THEN ''   ELSE '--' END FILE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FILE_ID           ')) > 0 THEN ''   ELSE '--' END FILE_ID
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLESPACE_NAME   ')) > 0 THEN ''   ELSE '--' END TABLESPACE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BYTES             ')) > 0 THEN ''   ELSE '--' END BYTES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BLOCKS            ')) > 0 THEN ''   ELSE '--' END BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('STATUS            ')) > 0 THEN ''   ELSE '--' END STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('RELATIVE_FNO      ')) > 0 THEN ''   ELSE '--' END RELATIVE_FNO
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AUTOEXTENSIBLE    ')) > 0 THEN ''   ELSE '--' END AUTOEXTENSIBLE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAXBYTES          ')) > 0 THEN ''   ELSE '--' END MAXBYTES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAXBLOCKS         ')) > 0 THEN ''   ELSE '--' END MAXBLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INCREMENT_BY      ')) > 0 THEN ''   ELSE '--' END INCREMENT_BY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USER_BYTES        ')) > 0 THEN ''   ELSE '--' END USER_BYTES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USER_BLOCKS       ')) > 0 THEN ''   ELSE '--' END USER_BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ONLINE_STATUS     ')) > 0 THEN ''   ELSE '--' END ONLINE_STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOST_WRITE_PROTECT')) > 0 THEN ''   ELSE '--' END LOST_WRITE_PROTECT
-,CASE WHEN '&columns_' = '*'                                                             THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
+clear columns
+clear breaks
+set pages 50000
+set lines 200
+set feed on
 
-set term on
-
-COL FILE_NAME          NOPRINT
-COL FILE_ID            NOPRINT
-COL TABLESPACE_NAME    NOPRINT
-COL BYTES              NOPRINT
-COL BLOCKS             NOPRINT
-COL STATUS             NOPRINT
-COL RELATIVE_FNO       NOPRINT
-COL AUTOEXTENSIBLE     NOPRINT
-COL MAXBYTES           NOPRINT
-COL MAXBLOCKS          NOPRINT
-COL INCREMENT_BY       NOPRINT
-COL USER_BYTES         NOPRINT
-COL USER_BLOCKS        NOPRINT
-COL ONLINE_STATUS      NOPRINT
-COL LOST_WRITE_PROTECT NOPRINT
-
-SELECT ROWNUM, dbfs.*
-FROM (
-SELECT
-                                ''
-&ge_90_  &TABLESPACE_NAME_    ||LPAD(TRIM('TABLESPACE_NAME   '),18,' ')||' : '||TABLESPACE_NAME    ||CHR(10)
-&ge_90_  &FILE_ID_            ||LPAD(TRIM('FILE_ID           '),18,' ')||' : '||FILE_ID            ||CHR(10)
-&ge_90_  &FILE_NAME_          ||LPAD(TRIM('FILE_NAME         '),18,' ')||' : '||FILE_NAME          ||CHR(10)
-&ge_90_  &BYTES_              ||LPAD(TRIM('BYTES             '),18,' ')||' : '||CASE WHEN bytes < 1024          THEN bytes ||''
-&ge_90_  &BYTES_                                                                WHEN bytes < POWER(1024,2) THEN ROUND(bytes/POWER(1024,1),1)||'K'
-&ge_90_  &BYTES_                                                                WHEN bytes < POWER(1024,3) THEN ROUND(bytes/POWER(1024,2),1)||'M'
-&ge_90_  &BYTES_                                                                WHEN bytes < POWER(1024,4) THEN ROUND(bytes/POWER(1024,3),1)||'G'
-&ge_90_  &BYTES_                                                                WHEN bytes < POWER(1024,5) THEN ROUND(bytes/POWER(1024,4),1)||'T'
-&ge_90_  &BYTES_                                                                END                ||CHR(10)
-&ge_90_  &BLOCKS_             ||LPAD(TRIM('BLOCKS            '),18,' ')||' : '||BLOCKS             ||CHR(10)
-&ge_90_  &STATUS_             ||LPAD(TRIM('STATUS            '),18,' ')||' : '||STATUS             ||CHR(10)
-&ge_90_  &RELATIVE_FNO_       ||LPAD(TRIM('RELATIVE_FNO      '),18,' ')||' : '||RELATIVE_FNO       ||CHR(10)
-&ge_90_  &AUTOEXTENSIBLE_     ||LPAD(TRIM('AUTOEXTENSIBLE    '),18,' ')||' : '||AUTOEXTENSIBLE     ||CHR(10)
-&ge_90_  &MAXBYTES_           ||LPAD(TRIM('MAXBYTES          '),18,' ')||' : '||CASE WHEN maxbytes < 1024          THEN maxbytes ||''
-&ge_90_  &MAXBYTES_                                                             WHEN maxbytes < POWER(1024,2) THEN ROUND(maxbytes/POWER(1024,1),1)||'K'
-&ge_90_  &MAXBYTES_                                                             WHEN maxbytes < POWER(1024,3) THEN ROUND(maxbytes/POWER(1024,2),1)||'M'
-&ge_90_  &MAXBYTES_                                                             WHEN maxbytes < POWER(1024,4) THEN ROUND(maxbytes/POWER(1024,3),1)||'G'
-&ge_90_  &MAXBYTES_                                                             WHEN maxbytes < POWER(1024,5) THEN ROUND(maxbytes/POWER(1024,4),1)||'T'
-&ge_90_  &MAXBYTES_                                                             END                ||CHR(10)
-&ge_90_  &MAXBLOCKS_          ||LPAD(TRIM('MAXBLOCKS         '),18,' ')||' : '||MAXBLOCKS          ||CHR(10)
-&ge_90_  &INCREMENT_BY_       ||LPAD(TRIM('INCREMENT_BY      '),18,' ')||' : '||INCREMENT_BY       ||CHR(10)
-&ge_90_  &USER_BYTES_         ||LPAD(TRIM('USER_BYTES        '),18,' ')||' : '||CASE WHEN user_bytes < 1024          THEN user_bytes ||''
-&ge_90_  &USER_BYTES_                                                           WHEN user_bytes < POWER(1024,2) THEN ROUND(user_bytes/POWER(1024,1),1)||'K'
-&ge_90_  &USER_BYTES_                                                           WHEN user_bytes < POWER(1024,3) THEN ROUND(user_bytes/POWER(1024,2),1)||'M'
-&ge_90_  &USER_BYTES_                                                           WHEN user_bytes < POWER(1024,4) THEN ROUND(user_bytes/POWER(1024,3),1)||'G'
-&ge_90_  &USER_BYTES_                                                           WHEN user_bytes < POWER(1024,5) THEN ROUND(user_bytes/POWER(1024,4),1)||'T'
-&ge_90_  &USER_BYTES_                                                           END                ||CHR(10)
-&ge_90_  &USER_BLOCKS_        ||LPAD(TRIM('USER_BLOCKS       '),18,' ')||' : '||USER_BLOCKS        ||CHR(10)
-&ge_102_ &ONLINE_STATUS_      ||LPAD(TRIM('ONLINE_STATUS     '),18,' ')||' : '||ONLINE_STATUS      ||CHR(10)
-&ge_122_ &LOST_WRITE_PROTECT_ ||LPAD(TRIM('LOST_WRITE_PROTECT'),18,' ')||' : '||LOST_WRITE_PROTECT ||CHR(10)
-info
-&ge_90_  &TABLESPACE_NAME_    ,TABLESPACE_NAME
-&ge_90_  &FILE_ID_            ,FILE_ID
-&ge_90_  &FILE_NAME_          ,FILE_NAME
-&ge_90_  &BYTES_              ,BYTES
-&ge_90_  &BLOCKS_             ,BLOCKS
-&ge_90_  &STATUS_             ,STATUS
-&ge_90_  &RELATIVE_FNO_       ,RELATIVE_FNO
-&ge_90_  &AUTOEXTENSIBLE_     ,AUTOEXTENSIBLE
-&ge_90_  &MAXBYTES_           ,MAXBYTES
-&ge_90_  &MAXBLOCKS_          ,MAXBLOCKS
-&ge_90_  &INCREMENT_BY_       ,INCREMENT_BY
-&ge_90_  &USER_BYTES_         ,USER_BYTES
-&ge_90_  &USER_BLOCKS_        ,USER_BLOCKS
-&ge_102_ &ONLINE_STATUS_      ,ONLINE_STATUS
-&ge_122_ &LOST_WRITE_PROTECT_ ,LOST_WRITE_PROTECT
-FROM dba_data_files
-WHERE &where_
-& ORDENAR_ ORDER BY &columns_
-) dbfs
-;
-
-CLEAR COLUMNS
-CLEAR BREAKS
-LINEAS_CODIGO
-
-
-cat > segd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-UNDEFINE where_
-UNDEFINE columns_
-
-PROMPT
-PROMPT Listado de columnas:
-PROMPT
-PROMPT [ OWNER           BYTES          RETENTION       CELL_FLASH_CACHE     ]
-PROMPT [ SEGMENT_NAME    BLOCKS         MINRETENTION    INMEMORY             ]
-PROMPT [ PARTITION_NAME  EXTENTS        PCT_INCREASE    INMEMORY_PRIORITY    ]
-PROMPT [ SEGMENT_TYPE    INITIAL_EXTENT FREELISTS       INMEMORY_DISTRIBUTE  ]
-PROMPT [ SEGMENT_SUBTYPE NEXT_EXTENT    FREELIST_GROUPS INMEMORY_DUPLICATE   ]
-PROMPT [ TABLESPACE_NAME MIN_EXTENTS    RELATIVE_FNO    INMEMORY_COMPRESSION ]
-PROMPT [ HEADER_FILE     MAX_EXTENTS    BUFFER_POOL     CELLMEMORY           ]
-PROMPT [ HEADER_BLOCK    MAX_SIZE       FLASH_CACHE                          ]
-PROMPT
-PROMPT Comun [ OWNER,SEGMENT_NAME,PARTITION_NAME,BYTES,TABLESPACE_NAME ]
-PROMPT
-
-accept columns_ char default '*' -
-prompt 'Columnas a mostrar? [*]: '
-
-accept where_ char default '1=1' -
-prompt 'Where? [1=1]: '
-
-set term off
-
-column oracle_version new_value oracle_version_
-column ge_90  new_value ge_90_
-column ge_111 new_value ge_111_
-column ge_112 new_value ge_112_
-column ge_121 new_value ge_121_
-column ge_122 new_value ge_122_
-
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
-
---  define oracle_version_=9.1;
-
-select case when &oracle_version_ >= 9.0  then '' else '--' end ge_90 from v$instance;
-select case when &oracle_version_ >= 11.1 then '' else '--' end ge_111 from v$instance;
-select case when &oracle_version_ >= 11.2 then '' else '--' end ge_112 from v$instance;
-select case when &oracle_version_ >= 12.1 then '' else '--' end ge_121 from v$instance;
-select case when &oracle_version_ >= 12.2 then '' else '--' end ge_122 from v$instance;
-
-COL OWNER                NEW_VALUE OWNER_
-COL SEGMENT_NAME         NEW_VALUE SEGMENT_NAME_
-COL PARTITION_NAME       NEW_VALUE PARTITION_NAME_
-COL SEGMENT_TYPE         NEW_VALUE SEGMENT_TYPE_
-COL SEGMENT_SUBTYPE      NEW_VALUE SEGMENT_SUBTYPE_
-COL TABLESPACE_NAME      NEW_VALUE TABLESPACE_NAME_
-COL HEADER_FILE          NEW_VALUE HEADER_FILE_
-COL HEADER_BLOCK         NEW_VALUE HEADER_BLOCK_
-COL BYTES                NEW_VALUE BYTES_
-COL BLOCKS               NEW_VALUE BLOCKS_
-COL EXTENTS              NEW_VALUE EXTENTS_
-COL INITIAL_EXTENT       NEW_VALUE INITIAL_EXTENT_
-COL NEXT_EXTENT          NEW_VALUE NEXT_EXTENT_
-COL MIN_EXTENTS          NEW_VALUE MIN_EXTENTS_
-COL MAX_EXTENTS          NEW_VALUE MAX_EXTENTS_
-COL MAX_SIZE             NEW_VALUE MAX_SIZE_
-COL RETENTION            NEW_VALUE RETENTION_
-COL MINRETENTION         NEW_VALUE MINRETENTION_
-COL PCT_INCREASE         NEW_VALUE PCT_INCREASE_
-COL FREELISTS            NEW_VALUE FREELISTS_
-COL FREELIST_GROUPS      NEW_VALUE FREELIST_GROUPS_
-COL RELATIVE_FNO         NEW_VALUE RELATIVE_FNO_
-COL BUFFER_POOL          NEW_VALUE BUFFER_POOL_
-COL FLASH_CACHE          NEW_VALUE FLASH_CACHE_
-COL CELL_FLASH_CACHE     NEW_VALUE CELL_FLASH_CACHE_
-COL INMEMORY             NEW_VALUE INMEMORY_
-COL INMEMORY_PRIORITY    NEW_VALUE INMEMORY_PRIORITY_
-COL INMEMORY_DISTRIBUTE  NEW_VALUE INMEMORY_DISTRIBUTE_
-COL INMEMORY_DUPLICATE   NEW_VALUE INMEMORY_DUPLICATE_
-COL INMEMORY_COMPRESSION NEW_VALUE INMEMORY_COMPRESSION_
-COL CELLMEMORY           NEW_VALUE CELLMEMORY_
-COL ORDENAR              NEW_VALUE ORDENAR_
-
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('OWNER               ')) > 0 THEN ''   ELSE '--' END OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_NAME        ')) > 0 THEN ''   ELSE '--' END SEGMENT_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PARTITION_NAME      ')) > 0 THEN ''   ELSE '--' END PARTITION_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_TYPE        ')) > 0 THEN ''   ELSE '--' END SEGMENT_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_SUBTYPE     ')) > 0 THEN ''   ELSE '--' END SEGMENT_SUBTYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLESPACE_NAME     ')) > 0 THEN ''   ELSE '--' END TABLESPACE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('HEADER_FILE         ')) > 0 THEN ''   ELSE '--' END HEADER_FILE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('HEADER_BLOCK        ')) > 0 THEN ''   ELSE '--' END HEADER_BLOCK
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BYTES               ')) > 0 THEN ''   ELSE '--' END BYTES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BLOCKS              ')) > 0 THEN ''   ELSE '--' END BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTENTS             ')) > 0 THEN ''   ELSE '--' END EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INITIAL_EXTENT      ')) > 0 THEN ''   ELSE '--' END INITIAL_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NEXT_EXTENT         ')) > 0 THEN ''   ELSE '--' END NEXT_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MIN_EXTENTS         ')) > 0 THEN ''   ELSE '--' END MIN_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_EXTENTS         ')) > 0 THEN ''   ELSE '--' END MAX_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_SIZE            ')) > 0 THEN ''   ELSE '--' END MAX_SIZE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('RETENTION           ')) > 0 THEN ''   ELSE '--' END RETENTION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MINRETENTION        ')) > 0 THEN ''   ELSE '--' END MINRETENTION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_INCREASE        ')) > 0 THEN ''   ELSE '--' END PCT_INCREASE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELISTS           ')) > 0 THEN ''   ELSE '--' END FREELISTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELIST_GROUPS     ')) > 0 THEN ''   ELSE '--' END FREELIST_GROUPS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('RELATIVE_FNO        ')) > 0 THEN ''   ELSE '--' END RELATIVE_FNO
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BUFFER_POOL         ')) > 0 THEN ''   ELSE '--' END BUFFER_POOL
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FLASH_CACHE         ')) > 0 THEN ''   ELSE '--' END FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CELL_FLASH_CACHE    ')) > 0 THEN ''   ELSE '--' END CELL_FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY            ')) > 0 THEN ''   ELSE '--' END INMEMORY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_PRIORITY   ')) > 0 THEN ''   ELSE '--' END INMEMORY_PRIORITY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_DISTRIBUTE ')) > 0 THEN ''   ELSE '--' END INMEMORY_DISTRIBUTE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_DUPLICATE  ')) > 0 THEN ''   ELSE '--' END INMEMORY_DUPLICATE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_COMPRESSION')) > 0 THEN ''   ELSE '--' END INMEMORY_COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CELLMEMORY          ')) > 0 THEN ''   ELSE '--' END CELLMEMORY
-,CASE WHEN '&columns_' = '*'                                                               THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
-
-set term on
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-COL info FOR A80
-
-COL OWNER                NOPRINT
-COL SEGMENT_NAME         NOPRINT
-COL PARTITION_NAME       NOPRINT
-COL SEGMENT_TYPE         NOPRINT
-COL SEGMENT_SUBTYPE      NOPRINT
-COL TABLESPACE_NAME      NOPRINT
-COL HEADER_FILE          NOPRINT
-COL HEADER_BLOCK         NOPRINT
-COL BYTES                NOPRINT
-COL BLOCKS               NOPRINT
-COL EXTENTS              NOPRINT
-COL INITIAL_EXTENT       NOPRINT
-COL NEXT_EXTENT          NOPRINT
-COL MIN_EXTENTS          NOPRINT
-COL MAX_EXTENTS          NOPRINT
-COL MAX_SIZE             NOPRINT
-COL RETENTION            NOPRINT
-COL MINRETENTION         NOPRINT
-COL PCT_INCREASE         NOPRINT
-COL FREELISTS            NOPRINT
-COL FREELIST_GROUPS      NOPRINT
-COL RELATIVE_FNO         NOPRINT
-COL BUFFER_POOL          NOPRINT
-COL FLASH_CACHE          NOPRINT
-COL CELL_FLASH_CACHE     NOPRINT
-COL INMEMORY             NOPRINT
-COL INMEMORY_PRIORITY    NOPRINT
-COL INMEMORY_DISTRIBUTE  NOPRINT
-COL INMEMORY_DUPLICATE   NOPRINT
-COL INMEMORY_COMPRESSION NOPRINT
-COL CELLMEMORY           NOPRINT
-
-SELECT ROWNUM, segs.*
-FROM (
-SELECT                            ''
-&ge_90_  &OWNER_                ||LPAD(TRIM('OWNER                '),20,' ')||' : '||OWNER               ||CHR(10)
-&ge_90_  &SEGMENT_NAME_         ||LPAD(TRIM('SEGMENT_NAME         '),20,' ')||' : '||SEGMENT_NAME        ||CHR(10)
-&ge_90_  &PARTITION_NAME_       ||LPAD(TRIM('PARTITION_NAME       '),20,' ')||' : '||PARTITION_NAME      ||CHR(10)
-&ge_90_  &SEGMENT_TYPE_         ||LPAD(TRIM('SEGMENT_TYPE         '),20,' ')||' : '||SEGMENT_TYPE        ||CHR(10)
-&ge_111_ &SEGMENT_SUBTYPE_      ||LPAD(TRIM('SEGMENT_SUBTYPE      '),20,' ')||' : '||SEGMENT_SUBTYPE     ||CHR(10)
-&ge_90_  &TABLESPACE_NAME_      ||LPAD(TRIM('TABLESPACE_NAME      '),20,' ')||' : '||TABLESPACE_NAME     ||CHR(10)
-&ge_90_  &HEADER_FILE_          ||LPAD(TRIM('HEADER_FILE          '),20,' ')||' : '||HEADER_FILE         ||CHR(10)
-&ge_90_  &HEADER_BLOCK_         ||LPAD(TRIM('HEADER_BLOCK         '),20,' ')||' : '||HEADER_BLOCK        ||CHR(10)
-&ge_90_  &BYTES_                ||LPAD(TRIM('BYTES                '),20,' ')||' : '||CASE WHEN BYTES < 1024          THEN bytes ||''
-&ge_90_  &BYTES_                                                                     WHEN BYTES < POWER(1024,2) THEN ROUND(BYTES/POWER(1024,1),1)||'K'
-&ge_90_  &BYTES_                                                                     WHEN BYTES < POWER(1024,3) THEN ROUND(BYTES/POWER(1024,2),1)||'M'
-&ge_90_  &BYTES_                                                                     WHEN BYTES < POWER(1024,4) THEN ROUND(BYTES/POWER(1024,3),1)||'G'
-&ge_90_  &BYTES_                                                                     WHEN BYTES < POWER(1024,5) THEN ROUND(BYTES/POWER(1024,4),1)||'T'
-&ge_90_  &BYTES_                                                                     END                 ||CHR(10)
-&ge_90_  &BLOCKS_               ||LPAD(TRIM('BLOCKS               '),20,' ')||' : '||BLOCKS              ||CHR(10)
-&ge_90_  &EXTENTS_              ||LPAD(TRIM('EXTENTS              '),20,' ')||' : '||EXTENTS             ||CHR(10)
-&ge_90_  &INITIAL_EXTENT_       ||LPAD(TRIM('INITIAL_EXTENT       '),20,' ')||' : '||CASE WHEN INITIAL_EXTENT < 1024     THEN INITIAL_EXTENT||''
-&ge_90_  &INITIAL_EXTENT_                                                            WHEN INITIAL_EXTENT < POWER(1024,2) THEN ROUND(INITIAL_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &INITIAL_EXTENT_                                                            WHEN INITIAL_EXTENT < POWER(1024,3) THEN ROUND(INITIAL_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &INITIAL_EXTENT_                                                            WHEN INITIAL_EXTENT < POWER(1024,4) THEN ROUND(INITIAL_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &INITIAL_EXTENT_                                                            WHEN INITIAL_EXTENT < POWER(1024,5) THEN ROUND(INITIAL_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &INITIAL_EXTENT_                                                            END                 ||CHR(10)
-&ge_90_  &NEXT_EXTENT_          ||LPAD(TRIM('NEXT_EXTENT          '),20,' ')||' : '||CASE WHEN NEXT_EXTENT < 1024     THEN NEXT_EXTENT||''
-&ge_90_  &NEXT_EXTENT_                                                               WHEN NEXT_EXTENT < POWER(1024,2) THEN ROUND(NEXT_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &NEXT_EXTENT_                                                               WHEN NEXT_EXTENT < POWER(1024,3) THEN ROUND(NEXT_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &NEXT_EXTENT_                                                               WHEN NEXT_EXTENT < POWER(1024,4) THEN ROUND(NEXT_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &NEXT_EXTENT_                                                               WHEN NEXT_EXTENT < POWER(1024,5) THEN ROUND(NEXT_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &NEXT_EXTENT_                                                               END                 ||CHR(10)
-&ge_90_  &MIN_EXTENTS_          ||LPAD(TRIM('MIN_EXTENTS          '),20,' ')||' : '||MIN_EXTENTS         ||CHR(10)
-&ge_90_  &MAX_EXTENTS_          ||LPAD(TRIM('MAX_EXTENTS          '),20,' ')||' : '||MAX_EXTENTS         ||CHR(10)
-&ge_111_ &MAX_SIZE_             ||LPAD(TRIM('MAX_SIZE             '),20,' ')||' : '||CASE WHEN MAX_SIZE < 1024     THEN MAX_SIZE||''
-&ge_111_ &MAX_SIZE_                                                                  WHEN MAX_SIZE < POWER(1024,2) THEN ROUND(MAX_SIZE/POWER(1024,1),1)||'K'
-&ge_111_ &MAX_SIZE_                                                                  WHEN MAX_SIZE < POWER(1024,3) THEN ROUND(MAX_SIZE/POWER(1024,2),1)||'M'
-&ge_111_ &MAX_SIZE_                                                                  WHEN MAX_SIZE < POWER(1024,4) THEN ROUND(MAX_SIZE/POWER(1024,3),1)||'G'
-&ge_111_ &MAX_SIZE_                                                                  WHEN MAX_SIZE < POWER(1024,5) THEN ROUND(MAX_SIZE/POWER(1024,4),1)||'T'
-&ge_111_ &MAX_SIZE_                                                                  END                 ||CHR(10)
-&ge_111_ &RETENTION_            ||LPAD(TRIM('RETENTION            '),20,' ')||' : '||RETENTION           ||CHR(10)
-&ge_111_ &MINRETENTION_         ||LPAD(TRIM('MINRETENTION         '),20,' ')||' : '||MINRETENTION        ||CHR(10)
-&ge_90_  &PCT_INCREASE_         ||LPAD(TRIM('PCT_INCREASE         '),20,' ')||' : '||PCT_INCREASE        ||CHR(10)
-&ge_90_  &FREELISTS_            ||LPAD(TRIM('FREELISTS            '),20,' ')||' : '||FREELISTS           ||CHR(10)
-&ge_90_  &FREELIST_GROUPS_      ||LPAD(TRIM('FREELIST_GROUPS      '),20,' ')||' : '||FREELIST_GROUPS     ||CHR(10)
-&ge_90_  &RELATIVE_FNO_         ||LPAD(TRIM('RELATIVE_FNO         '),20,' ')||' : '||RELATIVE_FNO        ||CHR(10)
-&ge_90_  &BUFFER_POOL_          ||LPAD(TRIM('BUFFER_POOL          '),20,' ')||' : '||BUFFER_POOL         ||CHR(10)
-&ge_112_ &FLASH_CACHE_          ||LPAD(TRIM('FLASH_CACHE          '),20,' ')||' : '||FLASH_CACHE         ||CHR(10)
-&ge_112_ &CELL_FLASH_CACHE_     ||LPAD(TRIM('CELL_FLASH_CACHE     '),20,' ')||' : '||CELL_FLASH_CACHE    ||CHR(10)
-&ge_121_ &INMEMORY_             ||LPAD(TRIM('INMEMORY             '),20,' ')||' : '||INMEMORY            ||CHR(10)
-&ge_121_ &INMEMORY_PRIORITY_    ||LPAD(TRIM('INMEMORY_PRIORITY    '),20,' ')||' : '||INMEMORY_PRIORITY   ||CHR(10)
-&ge_121_ &INMEMORY_DISTRIBUTE_  ||LPAD(TRIM('INMEMORY_DISTRIBUTE  '),20,' ')||' : '||INMEMORY_DISTRIBUTE ||CHR(10)
-&ge_121_ &INMEMORY_DUPLICATE_   ||LPAD(TRIM('INMEMORY_DUPLICATE   '),20,' ')||' : '||INMEMORY_DUPLICATE  ||CHR(10)
-&ge_121_ &INMEMORY_COMPRESSION_ ||LPAD(TRIM('INMEMORY_COMPRESSION '),20,' ')||' : '||INMEMORY_COMPRESSION||CHR(10)
-&ge_122_ &CELLMEMORY_           ||LPAD(TRIM('CELLMEMORY           '),20,' ')||' : '||CELLMEMORY          ||CHR(10)
-info
-&ge_90_  &OWNER_                ,OWNER
-&ge_90_  &SEGMENT_NAME_         ,SEGMENT_NAME
-&ge_90_  &PARTITION_NAME_       ,PARTITION_NAME
-&ge_90_  &SEGMENT_TYPE_         ,SEGMENT_TYPE
-&ge_111_ &SEGMENT_SUBTYPE_      ,SEGMENT_SUBTYPE
-&ge_90_  &TABLESPACE_NAME_      ,TABLESPACE_NAME
-&ge_90_  &HEADER_FILE_          ,HEADER_FILE
-&ge_90_  &HEADER_BLOCK_         ,HEADER_BLOCK
-&ge_90_  &BYTES_                ,BYTES
-&ge_90_  &BLOCKS_               ,BLOCKS
-&ge_90_  &EXTENTS_              ,EXTENTS
-&ge_90_  &INITIAL_EXTENT_       ,INITIAL_EXTENT
-&ge_90_  &NEXT_EXTENT_          ,NEXT_EXTENT
-&ge_90_  &MIN_EXTENTS_          ,MIN_EXTENTS
-&ge_90_  &MAX_EXTENTS_          ,MAX_EXTENTS
-&ge_111_ &MAX_SIZE_             ,MAX_SIZE
-&ge_111_ &RETENTION_            ,RETENTION
-&ge_111_ &MINRETENTION_         ,MINRETENTION
-&ge_90_  &PCT_INCREASE_         ,PCT_INCREASE
-&ge_90_  &FREELISTS_            ,FREELISTS
-&ge_90_  &FREELIST_GROUPS_      ,FREELIST_GROUPS
-&ge_90_  &RELATIVE_FNO_         ,RELATIVE_FNO
-&ge_90_  &BUFFER_POOL_          ,BUFFER_POOL
-&ge_112_ &FLASH_CACHE_          ,FLASH_CACHE
-&ge_112_ &CELL_FLASH_CACHE_     ,CELL_FLASH_CACHE
-&ge_121_ &INMEMORY_             ,INMEMORY
-&ge_121_ &INMEMORY_PRIORITY_    ,INMEMORY_PRIORITY
-&ge_121_ &INMEMORY_DISTRIBUTE_  ,INMEMORY_DISTRIBUTE
-&ge_121_ &INMEMORY_DUPLICATE_   ,INMEMORY_DUPLICATE
-&ge_121_ &INMEMORY_COMPRESSION_ ,INMEMORY_COMPRESSION
-&ge_122_ &CELLMEMORY_           ,CELLMEMORY
-FROM dba_segments
-WHERE &where_
-&ORDENAR_ ORDER BY &columns_
-) segs
-;
-
-CLEAR BREAKS
-CLEAR COLUMNS
-LINEAS_CODIGO
-
-cat > tabd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-UNDEFINE where_
-UNDEFINE columns_
-
-PROMPT
-PROMPT Listado de columnas:
-PROMPT
-PROMPT [ OWNER           FREELISTS                 TABLE_LOCK       SKIP_CORRUPT      INMEMORY               INMEMORY_SERVICE_NAME ]
-PROMPT [ TABLE_NAME      FREELIST_GROUPS           SAMPLE_SIZE      MONITORING        INMEMORY_PRIORITY      CONTAINER_MAP_OBJECT  ]
-PROMPT [ TABLESPACE_NAME LOGGING                   LAST_ANALYZED    CLUSTER_OWNER     INMEMORY_DISTRIBUTE                          ]
-PROMPT [ CLUSTER_NAME    BACKED_UP                 PARTITIONED      DEPENDENCIES      INMEMORY_COMPRESSION                         ]
-PROMPT [ IOT_NAME        NUM_ROWS                  IOT_TYPE         COMPRESSION       INMEMORY_DUPLICATE                           ]
-PROMPT [ STATUS          BLOCKS                    TEMPORARY        COMPRESS_FOR      DEFAULT_COLLATION                            ]
-PROMPT [ PCT_FREE        EMPTY_BLOCKS              SECONDARY        DROPPED           DUPLICATED                                   ]
-PROMPT [ PCT_USED        AVG_SPACE                 NESTED           READ_ONLY         SHARDED                                      ]
-PROMPT [ INI_TRANS       CHAIN_CNT                 BUFFER_POOL      SEGMENT_CREATED   EXTERNAL                                     ]
-PROMPT [ MAX_TRANS       AVG_ROW_LEN               FLASH_CACHE      RESULT_CACHE      CELLMEMORY                                   ]
-PROMPT [ INITIAL_EXTENT  AVG_SPACE_FREELIST_BLOCKS CELL_FLASH_CACHE CLUSTERING        CONTAINERS_DEFAULT                           ]
-PROMPT [ NEXT_EXTENT     NUM_FREELIST_BLOCKS       ROW_MOVEMENT     ACTIVITY_TRACKING CONTAINER_MAP                                ]
-PROMPT [ MIN_EXTENTS     DEGREE                    GLOBAL_STATS     DML_TIMESTAMP     EXTENDED_DATA_LINK                           ]
-PROMPT [ MAX_EXTENTS     INSTANCES                 USER_STATS       HAS_IDENTITY      EXTENDED_DATA_LINK_MAP                       ]
-PROMPT [ PCT_INCREASE    CACHE                     DURATION         CONTAINER_DATA    INMEMORY_SERVICE                             ]
-PROMPT
-PROMPT Tuning [ OWNER,TABLE_NAME,TABLESPACE_NAME,DEGREE,INI_TRANS,MAX_TRANS,FREELISTS,FREELIST_GROUPS,SAMPLE_SIZE,NUM_ROWS,LAST_ANALYZED ]
-PROMPT
-
-accept columns_ char default '*' -
-prompt 'Columnas a mostrar? [*]: '
-
-accept where_ char default '1=1' -
-prompt 'Where? [1=1]: '
-
-set term off
-
-column oracle_version new_value oracle_version_
-column ge_90  new_value ge_90_
-column ge_101 new_value ge_101_
-column ge_102 new_value ge_102_
-column ge_111 new_value ge_111_
-column ge_112 new_value ge_112_
-column ge_121 new_value ge_121_
-column ge_122 new_value ge_122_
-
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
-
---  define oracle_version_=9.1;
-
-select case when &oracle_version_ >= 9.0  then '' else '--' end ge_90  from v$instance;
-select case when &oracle_version_ >= 10.1 then '' else '--' end ge_101 from v$instance;
-select case when &oracle_version_ >= 10.2 then '' else '--' end ge_102 from v$instance;
-select case when &oracle_version_ >= 11.1 then '' else '--' end ge_111 from v$instance;
-select case when &oracle_version_ >= 11.2 then '' else '--' end ge_112 from v$instance;
-select case when &oracle_version_ >= 12.1 then '' else '--' end ge_121 from v$instance;
-select case when &oracle_version_ >= 12.2 then '' else '--' end ge_122 from v$instance;
-
-COL OWNER                      NEW_VALUE OWNER_
-COL TABLE_NAME                 NEW_VALUE TABLE_NAME_
-COL TABLESPACE_NAME            NEW_VALUE TABLESPACE_NAME_
-COL CLUSTER_NAME               NEW_VALUE CLUSTER_NAME_
-COL IOT_NAME                   NEW_VALUE IOT_NAME_
-COL STATUS                     NEW_VALUE STATUS_
-COL PCT_FREE                   NEW_VALUE PCT_FREE_
-COL PCT_USED                   NEW_VALUE PCT_USED_
-COL INI_TRANS                  NEW_VALUE INI_TRANS_
-COL MAX_TRANS                  NEW_VALUE MAX_TRANS_
-COL INITIAL_EXTENT             NEW_VALUE INITIAL_EXTENT_
-COL NEXT_EXTENT                NEW_VALUE NEXT_EXTENT_
-COL MIN_EXTENTS                NEW_VALUE MIN_EXTENTS_
-COL MAX_EXTENTS                NEW_VALUE MAX_EXTENTS_
-COL PCT_INCREASE               NEW_VALUE PCT_INCREASE_
-COL FREELISTS                  NEW_VALUE FREELISTS_
-COL FREELIST_GROUPS            NEW_VALUE FREELIST_GROUPS_
-COL LOGGING                    NEW_VALUE LOGGING_
-COL BACKED_UP                  NEW_VALUE BACKED_UP_
-COL NUM_ROWS                   NEW_VALUE NUM_ROWS_
-COL BLOCKS                     NEW_VALUE BLOCKS_
-COL EMPTY_BLOCKS               NEW_VALUE EMPTY_BLOCKS_
-COL AVG_SPACE                  NEW_VALUE AVG_SPACE_
-COL CHAIN_CNT                  NEW_VALUE CHAIN_CNT_
-COL AVG_ROW_LEN                NEW_VALUE AVG_ROW_LEN_
-COL AVG_SPACE_FREELIST_BLOCKS  NEW_VALUE AVG_SPACE_FREELIST_BLOCKS_
-COL NUM_FREELIST_BLOCKS        NEW_VALUE NUM_FREELIST_BLOCKS_
-COL DEGREE                     NEW_VALUE DEGREE_
-COL INSTANCES                  NEW_VALUE INSTANCES_
-COL CACHE                      NEW_VALUE CACHE_
-COL TABLE_LOCK                 NEW_VALUE TABLE_LOCK_
-COL SAMPLE_SIZE                NEW_VALUE SAMPLE_SIZE_
-COL LAST_ANALYZED              NEW_VALUE LAST_ANALYZED_
-COL PARTITIONED                NEW_VALUE PARTITIONED_
-COL IOT_TYPE                   NEW_VALUE IOT_TYPE_
-COL TEMPORARY                  NEW_VALUE TEMPORARY_
-COL SECONDARY                  NEW_VALUE SECONDARY_
-COL NESTED                     NEW_VALUE NESTED_
-COL BUFFER_POOL                NEW_VALUE BUFFER_POOL_
-COL FLASH_CACHE                NEW_VALUE FLASH_CACHE_
-COL CELL_FLASH_CACHE           NEW_VALUE CELL_FLASH_CACHE_
-COL ROW_MOVEMENT               NEW_VALUE ROW_MOVEMENT_
-COL GLOBAL_STATS               NEW_VALUE GLOBAL_STATS_
-COL USER_STATS                 NEW_VALUE USER_STATS_
-COL DURATION                   NEW_VALUE DURATION_
-COL SKIP_CORRUPT               NEW_VALUE SKIP_CORRUPT_
-COL MONITORING                 NEW_VALUE MONITORING_
-COL CLUSTER_OWNER              NEW_VALUE CLUSTER_OWNER_
-COL DEPENDENCIES               NEW_VALUE DEPENDENCIES_
-COL COMPRESSION                NEW_VALUE COMPRESSION_
-COL COMPRESS_FOR               NEW_VALUE COMPRESS_FOR_
-COL DROPPED                    NEW_VALUE DROPPED_
-COL READ_ONLY                  NEW_VALUE READ_ONLY_
-COL SEGMENT_CREATED            NEW_VALUE SEGMENT_CREATED_
-COL RESULT_CACHE               NEW_VALUE RESULT_CACHE_
-COL CLUSTERING                 NEW_VALUE CLUSTERING_
-COL ACTIVITY_TRACKING          NEW_VALUE ACTIVITY_TRACKING_
-COL DML_TIMESTAMP              NEW_VALUE DML_TIMESTAMP_
-COL HAS_IDENTITY               NEW_VALUE HAS_IDENTITY_
-COL CONTAINER_DATA             NEW_VALUE CONTAINER_DATA_
-COL INMEMORY                   NEW_VALUE INMEMORY_
-COL INMEMORY_PRIORITY          NEW_VALUE INMEMORY_PRIORITY_
-COL INMEMORY_DISTRIBUTE        NEW_VALUE INMEMORY_DISTRIBUTE_
-COL INMEMORY_COMPRESSION       NEW_VALUE INMEMORY_COMPRESSION_
-COL INMEMORY_DUPLICATE         NEW_VALUE INMEMORY_DUPLICATE_
-COL DEFAULT_COLLATION          NEW_VALUE DEFAULT_COLLATION_
-COL DUPLICATED                 NEW_VALUE DUPLICATED_
-COL SHARDED                    NEW_VALUE SHARDED_
-COL EXTERNAL                   NEW_VALUE EXTERNAL_
-COL CELLMEMORY                 NEW_VALUE CELLMEMORY_
-COL CONTAINERS_DEFAULT         NEW_VALUE CONTAINERS_DEFAULT_
-COL CONTAINER_MAP              NEW_VALUE CONTAINER_MAP_
-COL EXTENDED_DATA_LINK         NEW_VALUE EXTENDED_DATA_LINK_
-COL EXTENDED_DATA_LINK_MAP     NEW_VALUE EXTENDED_DATA_LINK_MAP_
-COL INMEMORY_SERVICE           NEW_VALUE INMEMORY_SERVICE_
-COL INMEMORY_SERVICE_NAME      NEW_VALUE INMEMORY_SERVICE_NAME_
-COL CONTAINER_MAP_OBJECT       NEW_VALUE CONTAINER_MAP_OBJECT_
-COL ORDENAR                    NEW_VALUE ORDENAR_
-
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('OWNER                    ')) > 0 THEN ''   ELSE '--' END OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLE_NAME               ')) > 0 THEN ''   ELSE '--' END TABLE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLESPACE_NAME          ')) > 0 THEN ''   ELSE '--' END TABLESPACE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CLUSTER_NAME             ')) > 0 THEN ''   ELSE '--' END CLUSTER_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('IOT_NAME                 ')) > 0 THEN ''   ELSE '--' END IOT_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('STATUS                   ')) > 0 THEN ''   ELSE '--' END STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_FREE                 ')) > 0 THEN ''   ELSE '--' END PCT_FREE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_USED                 ')) > 0 THEN ''   ELSE '--' END PCT_USED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INI_TRANS                ')) > 0 THEN ''   ELSE '--' END INI_TRANS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_TRANS                ')) > 0 THEN ''   ELSE '--' END MAX_TRANS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INITIAL_EXTENT           ')) > 0 THEN ''   ELSE '--' END INITIAL_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NEXT_EXTENT              ')) > 0 THEN ''   ELSE '--' END NEXT_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MIN_EXTENTS              ')) > 0 THEN ''   ELSE '--' END MIN_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_EXTENTS              ')) > 0 THEN ''   ELSE '--' END MAX_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_INCREASE             ')) > 0 THEN ''   ELSE '--' END PCT_INCREASE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELISTS                ')) > 0 THEN ''   ELSE '--' END FREELISTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELIST_GROUPS          ')) > 0 THEN ''   ELSE '--' END FREELIST_GROUPS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOGGING                  ')) > 0 THEN ''   ELSE '--' END LOGGING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BACKED_UP                ')) > 0 THEN ''   ELSE '--' END BACKED_UP
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NUM_ROWS                 ')) > 0 THEN ''   ELSE '--' END NUM_ROWS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BLOCKS                   ')) > 0 THEN ''   ELSE '--' END BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EMPTY_BLOCKS             ')) > 0 THEN ''   ELSE '--' END EMPTY_BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AVG_SPACE                ')) > 0 THEN ''   ELSE '--' END AVG_SPACE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CHAIN_CNT                ')) > 0 THEN ''   ELSE '--' END CHAIN_CNT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AVG_ROW_LEN              ')) > 0 THEN ''   ELSE '--' END AVG_ROW_LEN
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AVG_SPACE_FREELIST_BLOCKS')) > 0 THEN ''   ELSE '--' END AVG_SPACE_FREELIST_BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NUM_FREELIST_BLOCKS      ')) > 0 THEN ''   ELSE '--' END NUM_FREELIST_BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEGREE                   ')) > 0 THEN ''   ELSE '--' END DEGREE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INSTANCES                ')) > 0 THEN ''   ELSE '--' END INSTANCES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CACHE                    ')) > 0 THEN ''   ELSE '--' END CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLE_LOCK               ')) > 0 THEN ''   ELSE '--' END TABLE_LOCK
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SAMPLE_SIZE              ')) > 0 THEN ''   ELSE '--' END SAMPLE_SIZE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LAST_ANALYZED            ')) > 0 THEN ''   ELSE '--' END LAST_ANALYZED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PARTITIONED              ')) > 0 THEN ''   ELSE '--' END PARTITIONED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('IOT_TYPE                 ')) > 0 THEN ''   ELSE '--' END IOT_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TEMPORARY                ')) > 0 THEN ''   ELSE '--' END TEMPORARY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SECONDARY                ')) > 0 THEN ''   ELSE '--' END SECONDARY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NESTED                   ')) > 0 THEN ''   ELSE '--' END NESTED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BUFFER_POOL              ')) > 0 THEN ''   ELSE '--' END BUFFER_POOL
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FLASH_CACHE              ')) > 0 THEN ''   ELSE '--' END FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CELL_FLASH_CACHE         ')) > 0 THEN ''   ELSE '--' END CELL_FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ROW_MOVEMENT             ')) > 0 THEN ''   ELSE '--' END ROW_MOVEMENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('GLOBAL_STATS             ')) > 0 THEN ''   ELSE '--' END GLOBAL_STATS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USER_STATS               ')) > 0 THEN ''   ELSE '--' END USER_STATS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DURATION                 ')) > 0 THEN ''   ELSE '--' END DURATION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SKIP_CORRUPT             ')) > 0 THEN ''   ELSE '--' END SKIP_CORRUPT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MONITORING               ')) > 0 THEN ''   ELSE '--' END MONITORING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CLUSTER_OWNER            ')) > 0 THEN ''   ELSE '--' END CLUSTER_OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEPENDENCIES             ')) > 0 THEN ''   ELSE '--' END DEPENDENCIES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('COMPRESSION              ')) > 0 THEN ''   ELSE '--' END COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('COMPRESS_FOR             ')) > 0 THEN ''   ELSE '--' END COMPRESS_FOR
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DROPPED                  ')) > 0 THEN ''   ELSE '--' END DROPPED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('READ_ONLY                ')) > 0 THEN ''   ELSE '--' END READ_ONLY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_CREATED          ')) > 0 THEN ''   ELSE '--' END SEGMENT_CREATED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('RESULT_CACHE             ')) > 0 THEN ''   ELSE '--' END RESULT_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CLUSTERING               ')) > 0 THEN ''   ELSE '--' END CLUSTERING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ACTIVITY_TRACKING        ')) > 0 THEN ''   ELSE '--' END ACTIVITY_TRACKING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DML_TIMESTAMP            ')) > 0 THEN ''   ELSE '--' END DML_TIMESTAMP
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('HAS_IDENTITY             ')) > 0 THEN ''   ELSE '--' END HAS_IDENTITY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CONTAINER_DATA           ')) > 0 THEN ''   ELSE '--' END CONTAINER_DATA
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY                 ')) > 0 THEN ''   ELSE '--' END INMEMORY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_PRIORITY        ')) > 0 THEN ''   ELSE '--' END INMEMORY_PRIORITY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_DISTRIBUTE      ')) > 0 THEN ''   ELSE '--' END INMEMORY_DISTRIBUTE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_COMPRESSION     ')) > 0 THEN ''   ELSE '--' END INMEMORY_COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_DUPLICATE       ')) > 0 THEN ''   ELSE '--' END INMEMORY_DUPLICATE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEFAULT_COLLATION        ')) > 0 THEN ''   ELSE '--' END DEFAULT_COLLATION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DUPLICATED               ')) > 0 THEN ''   ELSE '--' END DUPLICATED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SHARDED                  ')) > 0 THEN ''   ELSE '--' END SHARDED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTERNAL                 ')) > 0 THEN ''   ELSE '--' END EXTERNAL
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CELLMEMORY               ')) > 0 THEN ''   ELSE '--' END CELLMEMORY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CONTAINERS_DEFAULT       ')) > 0 THEN ''   ELSE '--' END CONTAINERS_DEFAULT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CONTAINER_MAP            ')) > 0 THEN ''   ELSE '--' END CONTAINER_MAP
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTENDED_DATA_LINK       ')) > 0 THEN ''   ELSE '--' END EXTENDED_DATA_LINK
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTENDED_DATA_LINK_MAP   ')) > 0 THEN ''   ELSE '--' END EXTENDED_DATA_LINK_MAP
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_SERVICE         ')) > 0 THEN ''   ELSE '--' END INMEMORY_SERVICE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INMEMORY_SERVICE_NAME    ')) > 0 THEN ''   ELSE '--' END INMEMORY_SERVICE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CONTAINER_MAP_OBJECT     ')) > 0 THEN ''   ELSE '--' END CONTAINER_MAP_OBJECT
-,CASE WHEN '&columns_' = '*'                                                                    THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
-
-set term on
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-COL info FOR A80
-
-COL OWNER                     NOPRINT
-COL TABLE_NAME                NOPRINT
-COL TABLESPACE_NAME           NOPRINT
-COL CLUSTER_NAME              NOPRINT
-COL IOT_NAME                  NOPRINT
-COL STATUS                    NOPRINT
-COL PCT_FREE                  NOPRINT
-COL PCT_USED                  NOPRINT
-COL INI_TRANS                 NOPRINT
-COL MAX_TRANS                 NOPRINT
-COL INITIAL_EXTENT            NOPRINT
-COL NEXT_EXTENT               NOPRINT
-COL MIN_EXTENTS               NOPRINT
-COL MAX_EXTENTS               NOPRINT
-COL PCT_INCREASE              NOPRINT
-COL FREELISTS                 NOPRINT
-COL FREELIST_GROUPS           NOPRINT
-COL LOGGING                   NOPRINT
-COL BACKED_UP                 NOPRINT
-COL NUM_ROWS                  NOPRINT
-COL BLOCKS                    NOPRINT
-COL EMPTY_BLOCKS              NOPRINT
-COL AVG_SPACE                 NOPRINT
-COL CHAIN_CNT                 NOPRINT
-COL AVG_ROW_LEN               NOPRINT
-COL AVG_SPACE_FREELIST_BLOCKS NOPRINT
-COL NUM_FREELIST_BLOCKS       NOPRINT
-COL DEGREE                    NOPRINT
-COL INSTANCES                 NOPRINT
-COL CACHE                     NOPRINT
-COL TABLE_LOCK                NOPRINT
-COL SAMPLE_SIZE               NOPRINT
-COL LAST_ANALYZED             NOPRINT
-COL PARTITIONED               NOPRINT
-COL IOT_TYPE                  NOPRINT
-COL TEMPORARY                 NOPRINT
-COL SECONDARY                 NOPRINT
-COL NESTED                    NOPRINT
-COL BUFFER_POOL               NOPRINT
-COL FLASH_CACHE               NOPRINT
-COL CELL_FLASH_CACHE          NOPRINT
-COL ROW_MOVEMENT              NOPRINT
-COL GLOBAL_STATS              NOPRINT
-COL USER_STATS                NOPRINT
-COL DURATION                  NOPRINT
-COL SKIP_CORRUPT              NOPRINT
-COL MONITORING                NOPRINT
-COL CLUSTER_OWNER             NOPRINT
-COL DEPENDENCIES              NOPRINT
-COL COMPRESSION               NOPRINT
-COL COMPRESS_FOR              NOPRINT
-COL DROPPED                   NOPRINT
-COL READ_ONLY                 NOPRINT
-COL SEGMENT_CREATED           NOPRINT
-COL RESULT_CACHE              NOPRINT
-COL CLUSTERING                NOPRINT
-COL ACTIVITY_TRACKING         NOPRINT
-COL DML_TIMESTAMP             NOPRINT
-COL HAS_IDENTITY              NOPRINT
-COL CONTAINER_DATA            NOPRINT
-COL INMEMORY                  NOPRINT
-COL INMEMORY_PRIORITY         NOPRINT
-COL INMEMORY_DISTRIBUTE       NOPRINT
-COL INMEMORY_COMPRESSION      NOPRINT
-COL INMEMORY_DUPLICATE        NOPRINT
-COL DEFAULT_COLLATION         NOPRINT
-COL DUPLICATED                NOPRINT
-COL SHARDED                   NOPRINT
-COL EXTERNAL                  NOPRINT
-COL CELLMEMORY                NOPRINT
-COL CONTAINERS_DEFAULT        NOPRINT
-COL CONTAINER_MAP             NOPRINT
-COL EXTENDED_DATA_LINK        NOPRINT
-COL EXTENDED_DATA_LINK_MAP    NOPRINT
-COL INMEMORY_SERVICE          NOPRINT
-COL INMEMORY_SERVICE_NAME     NOPRINT
-COL CONTAINER_MAP_OBJECT      NOPRINT
-
-SELECT ROWNUM, tabs.*
-FROM (
-SELECT                                 ''
-&ge_90_  &OWNER_                     ||LPAD(TRIM('OWNER                     '),25,' ')||' : '||OWNER                    ||CHR(10)
-&ge_90_  &TABLE_NAME_                ||LPAD(TRIM('TABLE_NAME                '),25,' ')||' : '||TABLE_NAME               ||CHR(10)
-&ge_90_  &TABLESPACE_NAME_           ||LPAD(TRIM('TABLESPACE_NAME           '),25,' ')||' : '||TABLESPACE_NAME          ||CHR(10)
-&ge_90_  &CLUSTER_NAME_              ||LPAD(TRIM('CLUSTER_NAME              '),25,' ')||' : '||CLUSTER_NAME             ||CHR(10)
-&ge_90_  &IOT_NAME_                  ||LPAD(TRIM('IOT_NAME                  '),25,' ')||' : '||IOT_NAME                 ||CHR(10)
-&ge_102_ &STATUS_                    ||LPAD(TRIM('STATUS                    '),25,' ')||' : '||STATUS                   ||CHR(10)
-&ge_90_  &PCT_FREE_                  ||LPAD(TRIM('PCT_FREE                  '),25,' ')||' : '||PCT_FREE                 ||CHR(10)
-&ge_90_  &PCT_USED_                  ||LPAD(TRIM('PCT_USED                  '),25,' ')||' : '||PCT_USED                 ||CHR(10)
-&ge_90_  &INI_TRANS_                 ||LPAD(TRIM('INI_TRANS                 '),25,' ')||' : '||INI_TRANS                ||CHR(10)
-&ge_90_  &MAX_TRANS_                 ||LPAD(TRIM('MAX_TRANS                 '),25,' ')||' : '||MAX_TRANS                ||CHR(10)
-&ge_90_  &INITIAL_EXTENT_            ||LPAD(TRIM('INITIAL_EXTENT            '),25,' ')||' : '||CASE WHEN INITIAL_EXTENT < 1024     THEN INITIAL_EXTENT||''
-&ge_90_  &INITIAL_EXTENT_                                                                      WHEN INITIAL_EXTENT < POWER(1024,2) THEN ROUND(INITIAL_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &INITIAL_EXTENT_                                                                      WHEN INITIAL_EXTENT < POWER(1024,3) THEN ROUND(INITIAL_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &INITIAL_EXTENT_                                                                      WHEN INITIAL_EXTENT < POWER(1024,4) THEN ROUND(INITIAL_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &INITIAL_EXTENT_                                                                      WHEN INITIAL_EXTENT < POWER(1024,5) THEN ROUND(INITIAL_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &INITIAL_EXTENT_                                                                      END                      ||CHR(10)
-&ge_90_  &NEXT_EXTENT_               ||LPAD(TRIM('NEXT_EXTENT               '),25,' ')||' : '||CASE WHEN NEXT_EXTENT < 1024     THEN NEXT_EXTENT||''
-&ge_90_  &NEXT_EXTENT_                                                                         WHEN NEXT_EXTENT < POWER(1024,2) THEN ROUND(NEXT_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &NEXT_EXTENT_                                                                         WHEN NEXT_EXTENT < POWER(1024,3) THEN ROUND(NEXT_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &NEXT_EXTENT_                                                                         WHEN NEXT_EXTENT < POWER(1024,4) THEN ROUND(NEXT_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &NEXT_EXTENT_                                                                         WHEN NEXT_EXTENT < POWER(1024,5) THEN ROUND(NEXT_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &NEXT_EXTENT_                                                                         END                      ||CHR(10)
-&ge_90_  &MIN_EXTENTS_               ||LPAD(TRIM('MIN_EXTENTS               '),25,' ')||' : '||MIN_EXTENTS              ||CHR(10)
-&ge_90_  &MAX_EXTENTS_               ||LPAD(TRIM('MAX_EXTENTS               '),25,' ')||' : '||MAX_EXTENTS              ||CHR(10)
-&ge_90_  &PCT_INCREASE_              ||LPAD(TRIM('PCT_INCREASE              '),25,' ')||' : '||PCT_INCREASE             ||CHR(10)
-&ge_90_  &FREELISTS_                 ||LPAD(TRIM('FREELISTS                 '),25,' ')||' : '||FREELISTS                ||CHR(10)
-&ge_90_  &FREELIST_GROUPS_           ||LPAD(TRIM('FREELIST_GROUPS           '),25,' ')||' : '||FREELIST_GROUPS          ||CHR(10)
-&ge_90_  &LOGGING_                   ||LPAD(TRIM('LOGGING                   '),25,' ')||' : '||LOGGING                  ||CHR(10)
-&ge_90_  &BACKED_UP_                 ||LPAD(TRIM('BACKED_UP                 '),25,' ')||' : '||BACKED_UP                ||CHR(10)
-&ge_90_  &NUM_ROWS_                  ||LPAD(TRIM('NUM_ROWS                  '),25,' ')||' : '||NUM_ROWS                 ||CHR(10)
-&ge_90_  &BLOCKS_                    ||LPAD(TRIM('BLOCKS                    '),25,' ')||' : '||BLOCKS                   ||CHR(10)
-&ge_90_  &EMPTY_BLOCKS_              ||LPAD(TRIM('EMPTY_BLOCKS              '),25,' ')||' : '||EMPTY_BLOCKS             ||CHR(10)
-&ge_90_  &AVG_SPACE_                 ||LPAD(TRIM('AVG_SPACE                 '),25,' ')||' : '||AVG_SPACE                ||CHR(10)
-&ge_90_  &CHAIN_CNT_                 ||LPAD(TRIM('CHAIN_CNT                 '),25,' ')||' : '||CHAIN_CNT                ||CHR(10)
-&ge_90_  &AVG_ROW_LEN_               ||LPAD(TRIM('AVG_ROW_LEN               '),25,' ')||' : '||AVG_ROW_LEN              ||CHR(10)
-&ge_90_  &AVG_SPACE_FREELIST_BLOCKS_ ||LPAD(TRIM('AVG_SPACE_FREELIST_BLOCKS '),25,' ')||' : '||AVG_SPACE_FREELIST_BLOCKS||CHR(10)
-&ge_90_  &NUM_FREELIST_BLOCKS_       ||LPAD(TRIM('NUM_FREELIST_BLOCKS       '),25,' ')||' : '||NUM_FREELIST_BLOCKS      ||CHR(10)
-&ge_90_  &DEGREE_                    ||LPAD(TRIM('DEGREE                    '),25,' ')||' : '||DEGREE                   ||CHR(10)
-&ge_90_  &INSTANCES_                 ||LPAD(TRIM('INSTANCES                 '),25,' ')||' : '||INSTANCES                ||CHR(10)
-&ge_90_  &CACHE_                     ||LPAD(TRIM('CACHE                     '),25,' ')||' : '||CACHE                    ||CHR(10)
-&ge_90_  &TABLE_LOCK_                ||LPAD(TRIM('TABLE_LOCK                '),25,' ')||' : '||TABLE_LOCK               ||CHR(10)
-&ge_90_  &SAMPLE_SIZE_               ||LPAD(TRIM('SAMPLE_SIZE               '),25,' ')||' : '||SAMPLE_SIZE              ||CHR(10)
-&ge_90_  &LAST_ANALYZED_             ||LPAD(TRIM('LAST_ANALYZED             '),25,' ')||' : '||TO_CHAR(LAST_ANALYZED,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_90_  &PARTITIONED_               ||LPAD(TRIM('PARTITIONED               '),25,' ')||' : '||PARTITIONED              ||CHR(10)
-&ge_90_  &IOT_TYPE_                  ||LPAD(TRIM('IOT_TYPE                  '),25,' ')||' : '||IOT_TYPE                 ||CHR(10)
-&ge_90_  &TEMPORARY_                 ||LPAD(TRIM('TEMPORARY                 '),25,' ')||' : '||TEMPORARY                ||CHR(10)
-&ge_90_  &SECONDARY_                 ||LPAD(TRIM('SECONDARY                 '),25,' ')||' : '||SECONDARY                ||CHR(10)
-&ge_90_  &NESTED_                    ||LPAD(TRIM('NESTED                    '),25,' ')||' : '||NESTED                   ||CHR(10)
-&ge_90_  &BUFFER_POOL_               ||LPAD(TRIM('BUFFER_POOL               '),25,' ')||' : '||BUFFER_POOL              ||CHR(10)
-&ge_90_  &FLASH_CACHE_               ||LPAD(TRIM('FLASH_CACHE               '),25,' ')||' : '||FLASH_CACHE              ||CHR(10)
-&ge_90_  &CELL_FLASH_CACHE_          ||LPAD(TRIM('CELL_FLASH_CACHE          '),25,' ')||' : '||CELL_FLASH_CACHE         ||CHR(10)
-&ge_90_  &ROW_MOVEMENT_              ||LPAD(TRIM('ROW_MOVEMENT              '),25,' ')||' : '||ROW_MOVEMENT             ||CHR(10)
-&ge_90_  &GLOBAL_STATS_              ||LPAD(TRIM('GLOBAL_STATS              '),25,' ')||' : '||GLOBAL_STATS             ||CHR(10)
-&ge_90_  &USER_STATS_                ||LPAD(TRIM('USER_STATS                '),25,' ')||' : '||USER_STATS               ||CHR(10)
-&ge_90_  &DURATION_                  ||LPAD(TRIM('DURATION                  '),25,' ')||' : '||DURATION                 ||CHR(10)
-&ge_90_  &SKIP_CORRUPT_              ||LPAD(TRIM('SKIP_CORRUPT              '),25,' ')||' : '||SKIP_CORRUPT             ||CHR(10)
-&ge_90_  &MONITORING_                ||LPAD(TRIM('MONITORING                '),25,' ')||' : '||MONITORING               ||CHR(10)
-&ge_90_  &CLUSTER_OWNER_             ||LPAD(TRIM('CLUSTER_OWNER             '),25,' ')||' : '||CLUSTER_OWNER            ||CHR(10)
-&ge_90_  &DEPENDENCIES_              ||LPAD(TRIM('DEPENDENCIES              '),25,' ')||' : '||DEPENDENCIES             ||CHR(10)
-&ge_90_  &COMPRESSION_               ||LPAD(TRIM('COMPRESSION               '),25,' ')||' : '||COMPRESSION              ||CHR(10)
-&ge_111_ &COMPRESS_FOR_              ||LPAD(TRIM('COMPRESS_FOR              '),25,' ')||' : '||COMPRESS_FOR             ||CHR(10)
-&ge_90_  &DROPPED_                   ||LPAD(TRIM('DROPPED                   '),25,' ')||' : '||DROPPED                  ||CHR(10)
-&ge_112_ &READ_ONLY_                 ||LPAD(TRIM('READ_ONLY                 '),25,' ')||' : '||READ_ONLY                ||CHR(10)
-&ge_112_ &SEGMENT_CREATED_           ||LPAD(TRIM('SEGMENT_CREATED           '),25,' ')||' : '||SEGMENT_CREATED          ||CHR(10)
-&ge_112_ &RESULT_CACHE_              ||LPAD(TRIM('RESULT_CACHE              '),25,' ')||' : '||RESULT_CACHE             ||CHR(10)
-&ge_121_ &CLUSTERING_                ||LPAD(TRIM('CLUSTERING                '),25,' ')||' : '||CLUSTERING               ||CHR(10)
-&ge_121_ &ACTIVITY_TRACKING_         ||LPAD(TRIM('ACTIVITY_TRACKING         '),25,' ')||' : '||ACTIVITY_TRACKING        ||CHR(10)
-&ge_121_ &DML_TIMESTAMP_             ||LPAD(TRIM('DML_TIMESTAMP             '),25,' ')||' : '||DML_TIMESTAMP            ||CHR(10)
-&ge_121_ &HAS_IDENTITY_              ||LPAD(TRIM('HAS_IDENTITY              '),25,' ')||' : '||HAS_IDENTITY             ||CHR(10)
-&ge_121_ &CONTAINER_DATA_            ||LPAD(TRIM('CONTAINER_DATA            '),25,' ')||' : '||CONTAINER_DATA           ||CHR(10)
-&ge_121_ &INMEMORY_                  ||LPAD(TRIM('INMEMORY                  '),25,' ')||' : '||INMEMORY                 ||CHR(10)
-&ge_121_ &INMEMORY_PRIORITY_         ||LPAD(TRIM('INMEMORY_PRIORITY         '),25,' ')||' : '||INMEMORY_PRIORITY        ||CHR(10)
-&ge_121_ &INMEMORY_DISTRIBUTE_       ||LPAD(TRIM('INMEMORY_DISTRIBUTE       '),25,' ')||' : '||INMEMORY_DISTRIBUTE      ||CHR(10)
-&ge_121_ &INMEMORY_COMPRESSION_      ||LPAD(TRIM('INMEMORY_COMPRESSION      '),25,' ')||' : '||INMEMORY_COMPRESSION     ||CHR(10)
-&ge_121_ &INMEMORY_DUPLICATE_        ||LPAD(TRIM('INMEMORY_DUPLICATE        '),25,' ')||' : '||INMEMORY_DUPLICATE       ||CHR(10)
-&ge_122_ &DEFAULT_COLLATION_         ||LPAD(TRIM('DEFAULT_COLLATION         '),25,' ')||' : '||DEFAULT_COLLATION        ||CHR(10)
-&ge_122_ &DUPLICATED_                ||LPAD(TRIM('DUPLICATED                '),25,' ')||' : '||DUPLICATED               ||CHR(10)
-&ge_122_ &SHARDED_                   ||LPAD(TRIM('SHARDED                   '),25,' ')||' : '||SHARDED                  ||CHR(10)
-&ge_122_ &EXTERNAL_                  ||LPAD(TRIM('EXTERNAL                  '),25,' ')||' : '||EXTERNAL                 ||CHR(10)
-&ge_122_ &CELLMEMORY_                ||LPAD(TRIM('CELLMEMORY                '),25,' ')||' : '||CELLMEMORY               ||CHR(10)
-&ge_122_ &CONTAINERS_DEFAULT_        ||LPAD(TRIM('CONTAINERS_DEFAULT        '),25,' ')||' : '||CONTAINERS_DEFAULT       ||CHR(10)
-&ge_122_ &CONTAINER_MAP_             ||LPAD(TRIM('CONTAINER_MAP             '),25,' ')||' : '||CONTAINER_MAP            ||CHR(10)
-&ge_122_ &EXTENDED_DATA_LINK_        ||LPAD(TRIM('EXTENDED_DATA_LINK        '),25,' ')||' : '||EXTENDED_DATA_LINK       ||CHR(10)
-&ge_122_ &EXTENDED_DATA_LINK_MAP_    ||LPAD(TRIM('EXTENDED_DATA_LINK_MAP    '),25,' ')||' : '||EXTENDED_DATA_LINK_MAP   ||CHR(10)
-&ge_122_ &INMEMORY_SERVICE_          ||LPAD(TRIM('INMEMORY_SERVICE          '),25,' ')||' : '||INMEMORY_SERVICE         ||CHR(10)
-&ge_122_ &INMEMORY_SERVICE_NAME_     ||LPAD(TRIM('INMEMORY_SERVICE_NAME     '),25,' ')||' : '||INMEMORY_SERVICE_NAME    ||CHR(10)
-&ge_122_ &CONTAINER_MAP_OBJECT_      ||LPAD(TRIM('CONTAINER_MAP_OBJECT      '),25,' ')||' : '||CONTAINER_MAP_OBJECT     ||CHR(10)
-info
-&ge_90_  &OWNER_                     ,OWNER
-&ge_90_  &TABLE_NAME_                ,TABLE_NAME
-&ge_90_  &TABLESPACE_NAME_           ,TABLESPACE_NAME
-&ge_90_  &CLUSTER_NAME_              ,CLUSTER_NAME
-&ge_90_  &IOT_NAME_                  ,IOT_NAME
-&ge_102_ &STATUS_                    ,STATUS
-&ge_90_  &PCT_FREE_                  ,PCT_FREE
-&ge_90_  &PCT_USED_                  ,PCT_USED
-&ge_90_  &INI_TRANS_                 ,INI_TRANS
-&ge_90_  &MAX_TRANS_                 ,MAX_TRANS
-&ge_90_  &INITIAL_EXTENT_            ,INITIAL_EXTENT
-&ge_90_  &NEXT_EXTENT_               ,NEXT_EXTENT
-&ge_90_  &MIN_EXTENTS_               ,MIN_EXTENTS
-&ge_90_  &MAX_EXTENTS_               ,MAX_EXTENTS
-&ge_90_  &PCT_INCREASE_              ,PCT_INCREASE
-&ge_90_  &FREELISTS_                 ,FREELISTS
-&ge_90_  &FREELIST_GROUPS_           ,FREELIST_GROUPS
-&ge_90_  &LOGGING_                   ,LOGGING
-&ge_90_  &BACKED_UP_                 ,BACKED_UP
-&ge_90_  &NUM_ROWS_                  ,NUM_ROWS
-&ge_90_  &BLOCKS_                    ,BLOCKS
-&ge_90_  &EMPTY_BLOCKS_              ,EMPTY_BLOCKS
-&ge_90_  &AVG_SPACE_                 ,AVG_SPACE
-&ge_90_  &CHAIN_CNT_                 ,CHAIN_CNT
-&ge_90_  &AVG_ROW_LEN_               ,AVG_ROW_LEN
-&ge_90_  &AVG_SPACE_FREELIST_BLOCKS_ ,AVG_SPACE_FREELIST_BLOCKS
-&ge_90_  &NUM_FREELIST_BLOCKS_       ,NUM_FREELIST_BLOCKS
-&ge_90_  &DEGREE_                    ,DEGREE
-&ge_90_  &INSTANCES_                 ,INSTANCES
-&ge_90_  &CACHE_                     ,CACHE
-&ge_90_  &TABLE_LOCK_                ,TABLE_LOCK
-&ge_90_  &SAMPLE_SIZE_               ,SAMPLE_SIZE
-&ge_90_  &LAST_ANALYZED_             ,LAST_ANALYZED
-&ge_90_  &PARTITIONED_               ,PARTITIONED
-&ge_90_  &IOT_TYPE_                  ,IOT_TYPE
-&ge_90_  &TEMPORARY_                 ,TEMPORARY
-&ge_90_  &SECONDARY_                 ,SECONDARY
-&ge_90_  &NESTED_                    ,NESTED
-&ge_90_  &BUFFER_POOL_               ,BUFFER_POOL
-&ge_90_  &FLASH_CACHE_               ,FLASH_CACHE
-&ge_90_  &CELL_FLASH_CACHE_          ,CELL_FLASH_CACHE
-&ge_90_  &ROW_MOVEMENT_              ,ROW_MOVEMENT
-&ge_90_  &GLOBAL_STATS_              ,GLOBAL_STATS
-&ge_90_  &USER_STATS_                ,USER_STATS
-&ge_90_  &DURATION_                  ,DURATION
-&ge_90_  &SKIP_CORRUPT_              ,SKIP_CORRUPT
-&ge_90_  &MONITORING_                ,MONITORING
-&ge_90_  &CLUSTER_OWNER_             ,CLUSTER_OWNER
-&ge_90_  &DEPENDENCIES_              ,DEPENDENCIES
-&ge_90_  &COMPRESSION_               ,COMPRESSION
-&ge_111_ &COMPRESS_FOR_              ,COMPRESS_FOR
-&ge_90_  &DROPPED_                   ,DROPPED
-&ge_112_ &READ_ONLY_                 ,READ_ONLY
-&ge_112_ &SEGMENT_CREATED_           ,SEGMENT_CREATED
-&ge_112_ &RESULT_CACHE_              ,RESULT_CACHE
-&ge_121_ &CLUSTERING_                ,CLUSTERING
-&ge_121_ &ACTIVITY_TRACKING_         ,ACTIVITY_TRACKING
-&ge_121_ &DML_TIMESTAMP_             ,DML_TIMESTAMP
-&ge_121_ &HAS_IDENTITY_              ,HAS_IDENTITY
-&ge_121_ &CONTAINER_DATA_            ,CONTAINER_DATA
-&ge_121_ &INMEMORY_                  ,INMEMORY
-&ge_121_ &INMEMORY_PRIORITY_         ,INMEMORY_PRIORITY
-&ge_121_ &INMEMORY_DISTRIBUTE_       ,INMEMORY_DISTRIBUTE
-&ge_121_ &INMEMORY_COMPRESSION_      ,INMEMORY_COMPRESSION
-&ge_121_ &INMEMORY_DUPLICATE_        ,INMEMORY_DUPLICATE
-&ge_122_ &DEFAULT_COLLATION_         ,DEFAULT_COLLATION
-&ge_122_ &DUPLICATED_                ,DUPLICATED
-&ge_122_ &SHARDED_                   ,SHARDED
-&ge_122_ &EXTERNAL_                  ,EXTERNAL
-&ge_122_ &CELLMEMORY_                ,CELLMEMORY
-&ge_122_ &CONTAINERS_DEFAULT_        ,CONTAINERS_DEFAULT
-&ge_122_ &CONTAINER_MAP_             ,CONTAINER_MAP
-&ge_122_ &EXTENDED_DATA_LINK_        ,EXTENDED_DATA_LINK
-&ge_122_ &EXTENDED_DATA_LINK_MAP_    ,EXTENDED_DATA_LINK_MAP
-&ge_122_ &INMEMORY_SERVICE_          ,INMEMORY_SERVICE
-&ge_122_ &INMEMORY_SERVICE_NAME_     ,INMEMORY_SERVICE_NAME
-&ge_122_ &CONTAINER_MAP_OBJECT_      ,CONTAINER_MAP_OBJECT
-FROM dba_tables
-WHERE &where_
-&ORDENAR_ ORDER BY &columns_
-) tabs
-;
-
-CLEAR BREAKS
-CLEAR COLUMNS
-LINEAS_CODIGO
-
-cat > indd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-UNDEFINE where_
-UNDEFINE columns_
-
-PROMPT
-PROMPT Listado de columnas:
-PROMPT
-PROMPT [ OWNER           MAX_EXTENTS             NUM_ROWS          ITYP_OWNER              ]
-PROMPT [ INDEX_NAME      PCT_INCREASE            SAMPLE_SIZE       ITYP_NAME               ]
-PROMPT [ INDEX_TYPE      PCT_THRESHOLD           LAST_ANALYZED     PARAMETERS              ]
-PROMPT [ TABLE_OWNER     INCLUDE_COLUMN          DEGREE            GLOBAL_STATS            ]
-PROMPT [ TABLE_NAME      FREELISTS               INSTANCES         DOMIDX_STATUS           ]
-PROMPT [ TABLE_TYPE      FREELIST_GROUPS         PARTITIONED       DOMIDX_OPSTATUS         ]
-PROMPT [ UNIQUENESS      PCT_FREE                TEMPORARY         FUNCIDX_STATUS          ]
-PROMPT [ COMPRESSION     LOGGING                 GENERATED         JOIN_INDEX              ]
-PROMPT [ PREFIX_LENGTH   BLEVEL                  SECONDARY         IOT_REDUNDANT_PKEY_ELIM ]
-PROMPT [ TABLESPACE_NAME LEAF_BLOCKS             BUFFER_POOL       DROPPED                 ]
-PROMPT [ INI_TRANS       DISTINCT_KEYS           FLASH_CACHE       VISIBILITY              ]
-PROMPT [ MAX_TRANS       AVG_LEAF_BLOCKS_PER_KEY CELL_FLASH_CACHE  DOMIDX_MANAGEMENT       ]
-PROMPT [ INITIAL_EXTENT  AVG_DATA_BLOCKS_PER_KEY USER_STATS        SEGMENT_CREATED         ]
-PROMPT [ NEXT_EXTENT     CLUSTERING_FACTOR       DURATION          ORPHANED_ENTRIES        ]
-PROMPT [ MIN_EXTENTS     STATUS                  PCT_DIRECT_ACCESS INDEXING                ]
-PROMPT
-PROMPT Comun  [ OWNER,INDEX_NAME,INDEX_TYPE,TABLE_OWNER,TABLE_NAME,TABLESPACE_NAME,STATUS ]
-PROMPT Tuning [ TABLE_OWNER,TABLE_NAME,INDEX_NAME,INDEX_TYPE,INI_TRANS,FREELISTS,FREELIST_GROUPS,STATUS,NUM_ROWS,SAMPLE_SIZE,LAST_ANALYZED,DEGREE,PARTITIONED ]
-PROMPT
-
-accept columns_ char default '*' -
-prompt 'Columnas a mostrar? [*]: '
-
-accept where_ char default '1=1' -
-prompt 'Where? [1=1]: '
-
-set term off
-
-column oracle_version new_value oracle_version_
-column ge_90  new_value ge_90_
-column ge_101 new_value ge_101_
-column ge_111 new_value ge_111_
-column ge_112 new_value ge_112_
-column ge_121 new_value ge_121_
-
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
-
---  define oracle_version_=9.1;
-
-select case when &oracle_version_ >= 9.0  then '' else '--' end ge_90  from v$instance;
-select case when &oracle_version_ >= 10.1 then '' else '--' end ge_101 from v$instance;
-select case when &oracle_version_ >= 11.1 then '' else '--' end ge_111 from v$instance;
-select case when &oracle_version_ >= 11.2 then '' else '--' end ge_112 from v$instance;
-select case when &oracle_version_ >= 12.1 then '' else '--' end ge_121 from v$instance;
-
-COL OWNER                   NEW_VALUE OWNER_
-COL INDEX_NAME              NEW_VALUE INDEX_NAME_
-COL INDEX_TYPE              NEW_VALUE INDEX_TYPE_
-COL TABLE_OWNER             NEW_VALUE TABLE_OWNER_
-COL TABLE_NAME              NEW_VALUE TABLE_NAME_
-COL TABLE_TYPE              NEW_VALUE TABLE_TYPE_
-COL UNIQUENESS              NEW_VALUE UNIQUENESS_
-COL COMPRESSION             NEW_VALUE COMPRESSION_
-COL PREFIX_LENGTH           NEW_VALUE PREFIX_LENGTH_
-COL TABLESPACE_NAME         NEW_VALUE TABLESPACE_NAME_
-COL INI_TRANS               NEW_VALUE INI_TRANS_
-COL MAX_TRANS               NEW_VALUE MAX_TRANS_
-COL INITIAL_EXTENT          NEW_VALUE INITIAL_EXTENT_
-COL NEXT_EXTENT             NEW_VALUE NEXT_EXTENT_
-COL MIN_EXTENTS             NEW_VALUE MIN_EXTENTS_
-COL MAX_EXTENTS             NEW_VALUE MAX_EXTENTS_
-COL PCT_INCREASE            NEW_VALUE PCT_INCREASE_
-COL PCT_THRESHOLD           NEW_VALUE PCT_THRESHOLD_
-COL INCLUDE_COLUMN          NEW_VALUE INCLUDE_COLUMN_
-COL FREELISTS               NEW_VALUE FREELISTS_
-COL FREELIST_GROUPS         NEW_VALUE FREELIST_GROUPS_
-COL PCT_FREE                NEW_VALUE PCT_FREE_
-COL LOGGING                 NEW_VALUE LOGGING_
-COL BLEVEL                  NEW_VALUE BLEVEL_
-COL LEAF_BLOCKS             NEW_VALUE LEAF_BLOCKS_
-COL DISTINCT_KEYS           NEW_VALUE DISTINCT_KEYS_
-COL AVG_LEAF_BLOCKS_PER_KEY NEW_VALUE AVG_LEAF_BLOCKS_PER_KEY_
-COL AVG_DATA_BLOCKS_PER_KEY NEW_VALUE AVG_DATA_BLOCKS_PER_KEY_
-COL CLUSTERING_FACTOR       NEW_VALUE CLUSTERING_FACTOR_
-COL STATUS                  NEW_VALUE STATUS_
-COL NUM_ROWS                NEW_VALUE NUM_ROWS_
-COL SAMPLE_SIZE             NEW_VALUE SAMPLE_SIZE_
-COL LAST_ANALYZED           NEW_VALUE LAST_ANALYZED_
-COL DEGREE                  NEW_VALUE DEGREE_
-COL INSTANCES               NEW_VALUE INSTANCES_
-COL PARTITIONED             NEW_VALUE PARTITIONED_
-COL TEMPORARY               NEW_VALUE TEMPORARY_
-COL GENERATED               NEW_VALUE GENERATED_
-COL SECONDARY               NEW_VALUE SECONDARY_
-COL BUFFER_POOL             NEW_VALUE BUFFER_POOL_
-COL FLASH_CACHE             NEW_VALUE FLASH_CACHE_
-COL CELL_FLASH_CACHE        NEW_VALUE CELL_FLASH_CACHE_
-COL USER_STATS              NEW_VALUE USER_STATS_
-COL DURATION                NEW_VALUE DURATION_
-COL PCT_DIRECT_ACCESS       NEW_VALUE PCT_DIRECT_ACCESS_
-COL ITYP_OWNER              NEW_VALUE ITYP_OWNER_
-COL ITYP_NAME               NEW_VALUE ITYP_NAME_
-COL PARAMETERS              NEW_VALUE PARAMETERS_
-COL GLOBAL_STATS            NEW_VALUE GLOBAL_STATS_
-COL DOMIDX_STATUS           NEW_VALUE DOMIDX_STATUS_
-COL DOMIDX_OPSTATUS         NEW_VALUE DOMIDX_OPSTATUS_
-COL FUNCIDX_STATUS          NEW_VALUE FUNCIDX_STATUS_
-COL JOIN_INDEX              NEW_VALUE JOIN_INDEX_
-COL IOT_REDUNDANT_PKEY_ELIM NEW_VALUE IOT_REDUNDANT_PKEY_ELIM_
-COL DROPPED                 NEW_VALUE DROPPED_
-COL VISIBILITY              NEW_VALUE VISIBILITY_
-COL DOMIDX_MANAGEMENT       NEW_VALUE DOMIDX_MANAGEMENT_
-COL SEGMENT_CREATED         NEW_VALUE SEGMENT_CREATED_
-COL ORPHANED_ENTRIES        NEW_VALUE ORPHANED_ENTRIES_
-COL INDEXING                NEW_VALUE INDEXING_
-COL ORDENAR                 NEW_VALUE ORDENAR_
-
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('OWNER                   ')) > 0 THEN ''   ELSE '--' END OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INDEX_NAME              ')) > 0 THEN ''   ELSE '--' END INDEX_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INDEX_TYPE              ')) > 0 THEN ''   ELSE '--' END INDEX_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLE_OWNER             ')) > 0 THEN ''   ELSE '--' END TABLE_OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLE_NAME              ')) > 0 THEN ''   ELSE '--' END TABLE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLE_TYPE              ')) > 0 THEN ''   ELSE '--' END TABLE_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('UNIQUENESS              ')) > 0 THEN ''   ELSE '--' END UNIQUENESS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('COMPRESSION             ')) > 0 THEN ''   ELSE '--' END COMPRESSION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PREFIX_LENGTH           ')) > 0 THEN ''   ELSE '--' END PREFIX_LENGTH
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TABLESPACE_NAME         ')) > 0 THEN ''   ELSE '--' END TABLESPACE_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INI_TRANS               ')) > 0 THEN ''   ELSE '--' END INI_TRANS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_TRANS               ')) > 0 THEN ''   ELSE '--' END MAX_TRANS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INITIAL_EXTENT          ')) > 0 THEN ''   ELSE '--' END INITIAL_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NEXT_EXTENT             ')) > 0 THEN ''   ELSE '--' END NEXT_EXTENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MIN_EXTENTS             ')) > 0 THEN ''   ELSE '--' END MIN_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('MAX_EXTENTS             ')) > 0 THEN ''   ELSE '--' END MAX_EXTENTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_INCREASE            ')) > 0 THEN ''   ELSE '--' END PCT_INCREASE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_THRESHOLD           ')) > 0 THEN ''   ELSE '--' END PCT_THRESHOLD
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INCLUDE_COLUMN          ')) > 0 THEN ''   ELSE '--' END INCLUDE_COLUMN
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELISTS               ')) > 0 THEN ''   ELSE '--' END FREELISTS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FREELIST_GROUPS         ')) > 0 THEN ''   ELSE '--' END FREELIST_GROUPS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_FREE                ')) > 0 THEN ''   ELSE '--' END PCT_FREE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOGGING                 ')) > 0 THEN ''   ELSE '--' END LOGGING
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BLEVEL                  ')) > 0 THEN ''   ELSE '--' END BLEVEL
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LEAF_BLOCKS             ')) > 0 THEN ''   ELSE '--' END LEAF_BLOCKS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DISTINCT_KEYS           ')) > 0 THEN ''   ELSE '--' END DISTINCT_KEYS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AVG_LEAF_BLOCKS_PER_KEY ')) > 0 THEN ''   ELSE '--' END AVG_LEAF_BLOCKS_PER_KEY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AVG_DATA_BLOCKS_PER_KEY ')) > 0 THEN ''   ELSE '--' END AVG_DATA_BLOCKS_PER_KEY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CLUSTERING_FACTOR       ')) > 0 THEN ''   ELSE '--' END CLUSTERING_FACTOR
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('STATUS                  ')) > 0 THEN ''   ELSE '--' END STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('NUM_ROWS                ')) > 0 THEN ''   ELSE '--' END NUM_ROWS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SAMPLE_SIZE             ')) > 0 THEN ''   ELSE '--' END SAMPLE_SIZE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LAST_ANALYZED           ')) > 0 THEN ''   ELSE '--' END LAST_ANALYZED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEGREE                  ')) > 0 THEN ''   ELSE '--' END DEGREE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INSTANCES               ')) > 0 THEN ''   ELSE '--' END INSTANCES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PARTITIONED             ')) > 0 THEN ''   ELSE '--' END PARTITIONED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TEMPORARY               ')) > 0 THEN ''   ELSE '--' END TEMPORARY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('GENERATED               ')) > 0 THEN ''   ELSE '--' END GENERATED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SECONDARY               ')) > 0 THEN ''   ELSE '--' END SECONDARY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('BUFFER_POOL             ')) > 0 THEN ''   ELSE '--' END BUFFER_POOL
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FLASH_CACHE             ')) > 0 THEN ''   ELSE '--' END FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CELL_FLASH_CACHE        ')) > 0 THEN ''   ELSE '--' END CELL_FLASH_CACHE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USER_STATS              ')) > 0 THEN ''   ELSE '--' END USER_STATS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DURATION                ')) > 0 THEN ''   ELSE '--' END DURATION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PCT_DIRECT_ACCESS       ')) > 0 THEN ''   ELSE '--' END PCT_DIRECT_ACCESS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ITYP_OWNER              ')) > 0 THEN ''   ELSE '--' END ITYP_OWNER
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ITYP_NAME               ')) > 0 THEN ''   ELSE '--' END ITYP_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PARAMETERS              ')) > 0 THEN ''   ELSE '--' END PARAMETERS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('GLOBAL_STATS            ')) > 0 THEN ''   ELSE '--' END GLOBAL_STATS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DOMIDX_STATUS           ')) > 0 THEN ''   ELSE '--' END DOMIDX_STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DOMIDX_OPSTATUS         ')) > 0 THEN ''   ELSE '--' END DOMIDX_OPSTATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('FUNCIDX_STATUS          ')) > 0 THEN ''   ELSE '--' END FUNCIDX_STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('JOIN_INDEX              ')) > 0 THEN ''   ELSE '--' END JOIN_INDEX
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('IOT_REDUNDANT_PKEY_ELIM ')) > 0 THEN ''   ELSE '--' END IOT_REDUNDANT_PKEY_ELIM
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DROPPED                 ')) > 0 THEN ''   ELSE '--' END DROPPED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('VISIBILITY              ')) > 0 THEN ''   ELSE '--' END VISIBILITY
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DOMIDX_MANAGEMENT       ')) > 0 THEN ''   ELSE '--' END DOMIDX_MANAGEMENT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('SEGMENT_CREATED         ')) > 0 THEN ''   ELSE '--' END SEGMENT_CREATED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ORPHANED_ENTRIES        ')) > 0 THEN ''   ELSE '--' END ORPHANED_ENTRIES
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INDEXING                ')) > 0 THEN ''   ELSE '--' END INDEXING
-,CASE WHEN '&columns_' = '*'                                                                   THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
-
-set term on
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-COL info FOR A80
-
-COL OWNER                   NOPRINT
-COL INDEX_NAME              NOPRINT
-COL INDEX_TYPE              NOPRINT
-COL TABLE_OWNER             NOPRINT
-COL TABLE_NAME              NOPRINT
-COL TABLE_TYPE              NOPRINT
-COL UNIQUENESS              NOPRINT
-COL COMPRESSION             NOPRINT
-COL PREFIX_LENGTH           NOPRINT
-COL TABLESPACE_NAME         NOPRINT
-COL INI_TRANS               NOPRINT
-COL MAX_TRANS               NOPRINT
-COL INITIAL_EXTENT          NOPRINT
-COL NEXT_EXTENT             NOPRINT
-COL MIN_EXTENTS             NOPRINT
-COL MAX_EXTENTS             NOPRINT
-COL PCT_INCREASE            NOPRINT
-COL PCT_THRESHOLD           NOPRINT
-COL INCLUDE_COLUMN          NOPRINT
-COL FREELISTS               NOPRINT
-COL FREELIST_GROUPS         NOPRINT
-COL PCT_FREE                NOPRINT
-COL LOGGING                 NOPRINT
-COL BLEVEL                  NOPRINT
-COL LEAF_BLOCKS             NOPRINT
-COL DISTINCT_KEYS           NOPRINT
-COL AVG_LEAF_BLOCKS_PER_KEY NOPRINT
-COL AVG_DATA_BLOCKS_PER_KEY NOPRINT
-COL CLUSTERING_FACTOR       NOPRINT
-COL STATUS                  NOPRINT
-COL NUM_ROWS                NOPRINT
-COL SAMPLE_SIZE             NOPRINT
-COL LAST_ANALYZED           NOPRINT
-COL DEGREE                  NOPRINT
-COL INSTANCES               NOPRINT
-COL PARTITIONED             NOPRINT
-COL TEMPORARY               NOPRINT
-COL GENERATED               NOPRINT
-COL SECONDARY               NOPRINT
-COL BUFFER_POOL             NOPRINT
-COL FLASH_CACHE             NOPRINT
-COL CELL_FLASH_CACHE        NOPRINT
-COL USER_STATS              NOPRINT
-COL DURATION                NOPRINT
-COL PCT_DIRECT_ACCESS       NOPRINT
-COL ITYP_OWNER              NOPRINT
-COL ITYP_NAME               NOPRINT
-COL PARAMETERS              NOPRINT
-COL GLOBAL_STATS            NOPRINT
-COL DOMIDX_STATUS           NOPRINT
-COL DOMIDX_OPSTATUS         NOPRINT
-COL FUNCIDX_STATUS          NOPRINT
-COL JOIN_INDEX              NOPRINT
-COL IOT_REDUNDANT_PKEY_ELIM NOPRINT
-COL DROPPED                 NOPRINT
-COL VISIBILITY              NOPRINT
-COL DOMIDX_MANAGEMENT       NOPRINT
-COL SEGMENT_CREATED         NOPRINT
-COL ORPHANED_ENTRIES        NOPRINT
-COL INDEXING                NOPRINT
-
-SELECT ROWNUM, inds.*
-FROM (
-SELECT                              ''
-&ge_90_  &OWNER_                   ||LPAD(TRIM('OWNER                  '),23,' ')||' : '||OWNER                  ||CHR(10)
-&ge_90_  &INDEX_NAME_              ||LPAD(TRIM('INDEX_NAME             '),23,' ')||' : '||INDEX_NAME             ||CHR(10)
-&ge_90_  &INDEX_TYPE_              ||LPAD(TRIM('INDEX_TYPE             '),23,' ')||' : '||INDEX_TYPE             ||CHR(10)
-&ge_90_  &TABLE_OWNER_             ||LPAD(TRIM('TABLE_OWNER            '),23,' ')||' : '||TABLE_OWNER            ||CHR(10)
-&ge_90_  &TABLE_NAME_              ||LPAD(TRIM('TABLE_NAME             '),23,' ')||' : '||TABLE_NAME             ||CHR(10)
-&ge_90_  &TABLE_TYPE_              ||LPAD(TRIM('TABLE_TYPE             '),23,' ')||' : '||TABLE_TYPE             ||CHR(10)
-&ge_90_  &UNIQUENESS_              ||LPAD(TRIM('UNIQUENESS             '),23,' ')||' : '||UNIQUENESS             ||CHR(10)
-&ge_90_  &COMPRESSION_             ||LPAD(TRIM('COMPRESSION            '),23,' ')||' : '||COMPRESSION            ||CHR(10)
-&ge_90_  &PREFIX_LENGTH_           ||LPAD(TRIM('PREFIX_LENGTH          '),23,' ')||' : '||PREFIX_LENGTH          ||CHR(10)
-&ge_90_  &TABLESPACE_NAME_         ||LPAD(TRIM('TABLESPACE_NAME        '),23,' ')||' : '||TABLESPACE_NAME        ||CHR(10)
-&ge_90_  &INI_TRANS_               ||LPAD(TRIM('INI_TRANS              '),23,' ')||' : '||INI_TRANS              ||CHR(10)
-&ge_90_  &MAX_TRANS_               ||LPAD(TRIM('MAX_TRANS              '),23,' ')||' : '||MAX_TRANS              ||CHR(10)
-&ge_90_  &INITIAL_EXTENT_          ||LPAD(TRIM('INITIAL_EXTENT         '),23,' ')||' : '||CASE WHEN INITIAL_EXTENT < 1024     THEN INITIAL_EXTENT||''
-&ge_90_  &INITIAL_EXTENT_                                                                 WHEN INITIAL_EXTENT < POWER(1024,2) THEN ROUND(INITIAL_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &INITIAL_EXTENT_                                                                 WHEN INITIAL_EXTENT < POWER(1024,3) THEN ROUND(INITIAL_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &INITIAL_EXTENT_                                                                 WHEN INITIAL_EXTENT < POWER(1024,4) THEN ROUND(INITIAL_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &INITIAL_EXTENT_                                                                 WHEN INITIAL_EXTENT < POWER(1024,5) THEN ROUND(INITIAL_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &INITIAL_EXTENT_                                                                 END                    ||CHR(10)
-&ge_90_  &NEXT_EXTENT_             ||LPAD(TRIM('NEXT_EXTENT            '),23,' ')||' : '||CASE WHEN NEXT_EXTENT < 1024     THEN NEXT_EXTENT||''
-&ge_90_  &NEXT_EXTENT_                                                                    WHEN NEXT_EXTENT < POWER(1024,2) THEN ROUND(NEXT_EXTENT/POWER(1024,1),1)||'K'
-&ge_90_  &NEXT_EXTENT_                                                                    WHEN NEXT_EXTENT < POWER(1024,3) THEN ROUND(NEXT_EXTENT/POWER(1024,2),1)||'M'
-&ge_90_  &NEXT_EXTENT_                                                                    WHEN NEXT_EXTENT < POWER(1024,4) THEN ROUND(NEXT_EXTENT/POWER(1024,3),1)||'G'
-&ge_90_  &NEXT_EXTENT_                                                                    WHEN NEXT_EXTENT < POWER(1024,5) THEN ROUND(NEXT_EXTENT/POWER(1024,4),1)||'T'
-&ge_90_  &NEXT_EXTENT_                                                                    END                    ||CHR(10)
-&ge_90_  &MIN_EXTENTS_             ||LPAD(TRIM('MIN_EXTENTS            '),23,' ')||' : '||MIN_EXTENTS            ||CHR(10)
-&ge_90_  &MAX_EXTENTS_             ||LPAD(TRIM('MAX_EXTENTS            '),23,' ')||' : '||MAX_EXTENTS            ||CHR(10)
-&ge_90_  &PCT_INCREASE_            ||LPAD(TRIM('PCT_INCREASE           '),23,' ')||' : '||PCT_INCREASE           ||CHR(10)
-&ge_90_  &PCT_THRESHOLD_           ||LPAD(TRIM('PCT_THRESHOLD          '),23,' ')||' : '||PCT_THRESHOLD          ||CHR(10)
-&ge_90_  &INCLUDE_COLUMN_          ||LPAD(TRIM('INCLUDE_COLUMN         '),23,' ')||' : '||INCLUDE_COLUMN         ||CHR(10)
-&ge_90_  &FREELISTS_               ||LPAD(TRIM('FREELISTS              '),23,' ')||' : '||FREELISTS              ||CHR(10)
-&ge_90_  &FREELIST_GROUPS_         ||LPAD(TRIM('FREELIST_GROUPS        '),23,' ')||' : '||FREELIST_GROUPS        ||CHR(10)
-&ge_90_  &PCT_FREE_                ||LPAD(TRIM('PCT_FREE               '),23,' ')||' : '||PCT_FREE               ||CHR(10)
-&ge_90_  &LOGGING_                 ||LPAD(TRIM('LOGGING                '),23,' ')||' : '||LOGGING                ||CHR(10)
-&ge_90_  &BLEVEL_                  ||LPAD(TRIM('BLEVEL                 '),23,' ')||' : '||BLEVEL                 ||CHR(10)
-&ge_90_  &LEAF_BLOCKS_             ||LPAD(TRIM('LEAF_BLOCKS            '),23,' ')||' : '||LEAF_BLOCKS            ||CHR(10)
-&ge_90_  &DISTINCT_KEYS_           ||LPAD(TRIM('DISTINCT_KEYS          '),23,' ')||' : '||DISTINCT_KEYS          ||CHR(10)
-&ge_90_  &AVG_LEAF_BLOCKS_PER_KEY_ ||LPAD(TRIM('AVG_LEAF_BLOCKS_PER_KEY'),23,' ')||' : '||AVG_LEAF_BLOCKS_PER_KEY||CHR(10)
-&ge_90_  &AVG_DATA_BLOCKS_PER_KEY_ ||LPAD(TRIM('AVG_DATA_BLOCKS_PER_KEY'),23,' ')||' : '||AVG_DATA_BLOCKS_PER_KEY||CHR(10)
-&ge_90_  &CLUSTERING_FACTOR_       ||LPAD(TRIM('CLUSTERING_FACTOR      '),23,' ')||' : '||CLUSTERING_FACTOR      ||CHR(10)
-&ge_90_  &STATUS_                  ||LPAD(TRIM('STATUS                 '),23,' ')||' : '||STATUS                 ||CHR(10)
-&ge_90_  &NUM_ROWS_                ||LPAD(TRIM('NUM_ROWS               '),23,' ')||' : '||NUM_ROWS               ||CHR(10)
-&ge_90_  &SAMPLE_SIZE_             ||LPAD(TRIM('SAMPLE_SIZE            '),23,' ')||' : '||SAMPLE_SIZE            ||CHR(10)
-&ge_90_  &LAST_ANALYZED_           ||LPAD(TRIM('LAST_ANALYZED          '),23,' ')||' : '||TO_CHAR(LAST_ANALYZED,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_90_  &DEGREE_                  ||LPAD(TRIM('DEGREE                 '),23,' ')||' : '||DEGREE                 ||CHR(10)
-&ge_90_  &INSTANCES_               ||LPAD(TRIM('INSTANCES              '),23,' ')||' : '||INSTANCES              ||CHR(10)
-&ge_90_  &PARTITIONED_             ||LPAD(TRIM('PARTITIONED            '),23,' ')||' : '||PARTITIONED            ||CHR(10)
-&ge_90_  &TEMPORARY_               ||LPAD(TRIM('TEMPORARY              '),23,' ')||' : '||TEMPORARY              ||CHR(10)
-&ge_90_  &GENERATED_               ||LPAD(TRIM('GENERATED              '),23,' ')||' : '||GENERATED              ||CHR(10)
-&ge_90_  &SECONDARY_               ||LPAD(TRIM('SECONDARY              '),23,' ')||' : '||SECONDARY              ||CHR(10)
-&ge_90_  &BUFFER_POOL_             ||LPAD(TRIM('BUFFER_POOL            '),23,' ')||' : '||BUFFER_POOL            ||CHR(10)
-&ge_112_ &FLASH_CACHE_             ||LPAD(TRIM('FLASH_CACHE            '),23,' ')||' : '||FLASH_CACHE            ||CHR(10)
-&ge_112_ &CELL_FLASH_CACHE_        ||LPAD(TRIM('CELL_FLASH_CACHE       '),23,' ')||' : '||CELL_FLASH_CACHE       ||CHR(10)
-&ge_90_  &USER_STATS_              ||LPAD(TRIM('USER_STATS             '),23,' ')||' : '||USER_STATS             ||CHR(10)
-&ge_90_  &DURATION_                ||LPAD(TRIM('DURATION               '),23,' ')||' : '||DURATION               ||CHR(10)
-&ge_90_  &PCT_DIRECT_ACCESS_       ||LPAD(TRIM('PCT_DIRECT_ACCESS      '),23,' ')||' : '||PCT_DIRECT_ACCESS      ||CHR(10)
-&ge_90_  &ITYP_OWNER_              ||LPAD(TRIM('ITYP_OWNER             '),23,' ')||' : '||ITYP_OWNER             ||CHR(10)
-&ge_90_  &ITYP_NAME_               ||LPAD(TRIM('ITYP_NAME              '),23,' ')||' : '||ITYP_NAME              ||CHR(10)
-&ge_90_  &PARAMETERS_              ||LPAD(TRIM('PARAMETERS             '),23,' ')||' : '||PARAMETERS             ||CHR(10)
-&ge_90_  &GLOBAL_STATS_            ||LPAD(TRIM('GLOBAL_STATS           '),23,' ')||' : '||GLOBAL_STATS           ||CHR(10)
-&ge_90_  &DOMIDX_STATUS_           ||LPAD(TRIM('DOMIDX_STATUS          '),23,' ')||' : '||DOMIDX_STATUS          ||CHR(10)
-&ge_90_  &DOMIDX_OPSTATUS_         ||LPAD(TRIM('DOMIDX_OPSTATUS        '),23,' ')||' : '||DOMIDX_OPSTATUS        ||CHR(10)
-&ge_90_  &FUNCIDX_STATUS_          ||LPAD(TRIM('FUNCIDX_STATUS         '),23,' ')||' : '||FUNCIDX_STATUS         ||CHR(10)
-&ge_101_ &JOIN_INDEX_              ||LPAD(TRIM('JOIN_INDEX             '),23,' ')||' : '||JOIN_INDEX             ||CHR(10)
-&ge_101_ &IOT_REDUNDANT_PKEY_ELIM_ ||LPAD(TRIM('IOT_REDUNDANT_PKEY_ELIM'),23,' ')||' : '||IOT_REDUNDANT_PKEY_ELIM||CHR(10)
-&ge_101_ &DROPPED_                 ||LPAD(TRIM('DROPPED                '),23,' ')||' : '||DROPPED                ||CHR(10)
-&ge_111_ &VISIBILITY_              ||LPAD(TRIM('VISIBILITY             '),23,' ')||' : '||VISIBILITY             ||CHR(10)
-&ge_111_ &DOMIDX_MANAGEMENT_       ||LPAD(TRIM('DOMIDX_MANAGEMENT      '),23,' ')||' : '||DOMIDX_MANAGEMENT      ||CHR(10)
-&ge_112_ &SEGMENT_CREATED_         ||LPAD(TRIM('SEGMENT_CREATED        '),23,' ')||' : '||SEGMENT_CREATED        ||CHR(10)
-&ge_121_ &ORPHANED_ENTRIES_        ||LPAD(TRIM('ORPHANED_ENTRIES       '),23,' ')||' : '||ORPHANED_ENTRIES       ||CHR(10)
-&ge_121_ &INDEXING_                ||LPAD(TRIM('INDEXING               '),23,' ')||' : '||INDEXING               ||CHR(10)
-info
-&ge_90_  &OWNER_                   ,OWNER
-&ge_90_  &INDEX_NAME_              ,INDEX_NAME
-&ge_90_  &INDEX_TYPE_              ,INDEX_TYPE
-&ge_90_  &TABLE_OWNER_             ,TABLE_OWNER
-&ge_90_  &TABLE_NAME_              ,TABLE_NAME
-&ge_90_  &TABLE_TYPE_              ,TABLE_TYPE
-&ge_90_  &UNIQUENESS_              ,UNIQUENESS
-&ge_90_  &COMPRESSION_             ,COMPRESSION
-&ge_90_  &PREFIX_LENGTH_           ,PREFIX_LENGTH
-&ge_90_  &TABLESPACE_NAME_         ,TABLESPACE_NAME
-&ge_90_  &INI_TRANS_               ,INI_TRANS
-&ge_90_  &MAX_TRANS_               ,MAX_TRANS
-&ge_90_  &&INITIAL_EXTENT_         ,INITIAL_EXTENT
-&ge_90_  &&NEXT_EXTENT_            ,NEXT_EXTENT
-&ge_90_  &MIN_EXTENTS_             ,MIN_EXTENTS
-&ge_90_  &MAX_EXTENTS_             ,MAX_EXTENTS
-&ge_90_  &PCT_INCREASE_            ,PCT_INCREASE
-&ge_90_  &PCT_THRESHOLD_           ,PCT_THRESHOLD
-&ge_90_  &INCLUDE_COLUMN_          ,INCLUDE_COLUMN
-&ge_90_  &FREELISTS_               ,FREELISTS
-&ge_90_  &FREELIST_GROUPS_         ,FREELIST_GROUPS
-&ge_90_  &PCT_FREE_                ,PCT_FREE
-&ge_90_  &LOGGING_                 ,LOGGING
-&ge_90_  &BLEVEL_                  ,BLEVEL
-&ge_90_  &LEAF_BLOCKS_             ,LEAF_BLOCKS
-&ge_90_  &DISTINCT_KEYS_           ,DISTINCT_KEYS
-&ge_90_  &AVG_LEAF_BLOCKS_PER_KEY_ ,AVG_LEAF_BLOCKS_PER_KEY
-&ge_90_  &AVG_DATA_BLOCKS_PER_KEY_ ,AVG_DATA_BLOCKS_PER_KEY
-&ge_90_  &CLUSTERING_FACTOR_       ,CLUSTERING_FACTOR
-&ge_90_  &STATUS_                  ,STATUS
-&ge_90_  &NUM_ROWS_                ,NUM_ROWS
-&ge_90_  &SAMPLE_SIZE_             ,SAMPLE_SIZE
-&ge_90_  &LAST_ANALYZED_           ,LAST_ANALYZED
-&ge_90_  &DEGREE_                  ,DEGREE
-&ge_90_  &INSTANCES_               ,INSTANCES
-&ge_90_  &PARTITIONED_             ,PARTITIONED
-&ge_90_  &TEMPORARY_               ,TEMPORARY
-&ge_90_  &GENERATED_               ,GENERATED
-&ge_90_  &SECONDARY_               ,SECONDARY
-&ge_90_  &BUFFER_POOL_             ,BUFFER_POOL
-&ge_112_ &FLASH_CACHE_             ,FLASH_CACHE
-&ge_112_ &CELL_FLASH_CACHE_        ,CELL_FLASH_CACHE
-&ge_90_  &USER_STATS_              ,USER_STATS
-&ge_90_  &DURATION_                ,DURATION
-&ge_90_  &PCT_DIRECT_ACCESS_       ,PCT_DIRECT_ACCESS
-&ge_90_  &ITYP_OWNER_              ,ITYP_OWNER
-&ge_90_  &ITYP_NAME_               ,ITYP_NAME
-&ge_90_  &PARAMETERS_              ,PARAMETERS
-&ge_90_  &GLOBAL_STATS_            ,GLOBAL_STATS
-&ge_90_  &DOMIDX_STATUS_           ,DOMIDX_STATUS
-&ge_90_  &DOMIDX_OPSTATUS_         ,DOMIDX_OPSTATUS
-&ge_90_  &FUNCIDX_STATUS_          ,FUNCIDX_STATUS
-&ge_101_ &JOIN_INDEX_              ,JOIN_INDEX
-&ge_101_ &IOT_REDUNDANT_PKEY_ELIM_ ,IOT_REDUNDANT_PKEY_ELIM
-&ge_101_ &DROPPED_                 ,DROPPED
-&ge_111_ &VISIBILITY_              ,VISIBILITY
-&ge_111_ &DOMIDX_MANAGEMENT_       ,DOMIDX_MANAGEMENT
-&ge_112_ &SEGMENT_CREATED_         ,SEGMENT_CREATED
-&ge_121_ &ORPHANED_ENTRIES_        ,ORPHANED_ENTRIES
-&ge_121_ &INDEXING_                ,INDEXING
-FROM dba_indexes
-WHERE &where_
-&ORDENAR_ ORDER BY &columns_
-) inds
-;
-
-CLEAR BREAKS
-CLEAR COLUMNS
-LINEAS_CODIGO
-
-cat > userd.sql <<'LINEAS_CODIGO'
---        Nombre:
---         Autor: Juan Manuel Cruz Lopez (JohnXJean)
---   Descripcion:
---           Uso:
---Requerimientos:
---Licenciamiento:
---        Creado:
---       Soporte: johnxjean@gmail.com
-
-SET LINES 200
-SET PAGES 0
-SET VERIFY OFF
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-UNDEFINE where_
-UNDEFINE columns_
-
-PROMPT
-PROMPT Listado de columnas:
-PROMPT
-PROMPT [ USERNAME       DEFAULT_TABLESPACE          EXTERNAL_NAME       LAST_LOGIN        ]
-PROMPT [ USER_ID        TEMPORARY_TABLESPACE        PASSWORD_VERSIONS   ORACLE_MAINTAINED ]
-PROMPT [ PASSWORD       LOCAL_TEMP_TABLESPACE       EDITIONS_ENABLED    INHERITED         ]
-PROMPT [ ACCOUNT_STATUS CREATED                     AUTHENTICATION_TYPE DEFAULT_COLLATION ]
-PROMPT [ LOCK_DATE      PROFILE                     PROXY_ONLY_CONNECT  IMPLICIT          ]
-PROMPT [ EXPIRY_DATE    INITIAL_RSRC_CONSUMER_GROUP COMMON              ALL_SHARD         ]
-PROMPT
-PROMPT Comun [ USERNAME,ACCOUNT_STATUS,DEFAULT_TABLESPACE,TEMPORARY_TABLESPACE,PROFILE,CREATED,LAST_LOGIN ]
-PROMPT
-
-accept columns_ char default '*' -
-prompt 'Columnas a mostrar? [*]: '
-
-accept where_ char default '1=1' -
-prompt 'Where? [1=1]: '
-
-set term off
-
-column oracle_version new_value oracle_version_
-column ge_90  new_value ge_90_
-column ge_111 new_value ge_111_
-column ge_112 new_value ge_112_
-column ge_121 new_value ge_121_
-column ge_122 new_value ge_122_
-
-select to_number(substr(version,1,instr(version,'.',1,2)-1)) oracle_version from v$instance;
-
---  define oracle_version_=9.1;
-
-select case when &oracle_version_ >= 9.0  then '' else '--' end ge_90  from v$instance;
-select case when &oracle_version_ >= 11.1 then '' else '--' end ge_111 from v$instance;
-select case when &oracle_version_ >= 11.2 then '' else '--' end ge_112 from v$instance;
-select case when &oracle_version_ >= 12.1 then '' else '--' end ge_121 from v$instance;
-select case when &oracle_version_ >= 12.2 then '' else '--' end ge_122 from v$instance;
-
-COL USERNAME                    NEW_VALUE USERNAME_
-COL USER_ID                     NEW_VALUE USER_ID_
-COL PASSWORD                    NEW_VALUE PASSWORD_
-COL ACCOUNT_STATUS              NEW_VALUE ACCOUNT_STATUS_
-COL LOCK_DATE                   NEW_VALUE LOCK_DATE_
-COL EXPIRY_DATE                 NEW_VALUE EXPIRY_DATE_
-COL DEFAULT_TABLESPACE          NEW_VALUE DEFAULT_TABLESPACE_
-COL TEMPORARY_TABLESPACE        NEW_VALUE TEMPORARY_TABLESPACE_
-COL LOCAL_TEMP_TABLESPACE       NEW_VALUE LOCAL_TEMP_TABLESPACE_
-COL CREATED                     NEW_VALUE CREATED_
-COL PROFILE                     NEW_VALUE PROFILE_
-COL INITIAL_RSRC_CONSUMER_GROUP NEW_VALUE INITIAL_RSRC_CONSUMER_GROUP_
-COL EXTERNAL_NAME               NEW_VALUE EXTERNAL_NAME_
-COL PASSWORD_VERSIONS           NEW_VALUE PASSWORD_VERSIONS_
-COL EDITIONS_ENABLED            NEW_VALUE EDITIONS_ENABLED_
-COL AUTHENTICATION_TYPE         NEW_VALUE AUTHENTICATION_TYPE_
-COL PROXY_ONLY_CONNECT          NEW_VALUE PROXY_ONLY_CONNECT_
-COL COMMON                      NEW_VALUE COMMON_
-COL LAST_LOGIN                  NEW_VALUE LAST_LOGIN_
-COL ORACLE_MAINTAINED           NEW_VALUE ORACLE_MAINTAINED_
-COL INHERITED                   NEW_VALUE INHERITED_
-COL DEFAULT_COLLATION           NEW_VALUE DEFAULT_COLLATION_
-COL IMPLICIT                    NEW_VALUE IMPLICIT_
-COL ALL_SHARD                   NEW_VALUE ALL_SHARD_
-COL ORDENAR                     NEW_VALUE ORDENAR_
-
-SELECT
- CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USERNAME                   ')) > 0 THEN ''   ELSE '--' END USERNAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('USER_ID                    ')) > 0 THEN ''   ELSE '--' END USER_ID
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PASSWORD                   ')) > 0 THEN ''   ELSE '--' END PASSWORD
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ACCOUNT_STATUS             ')) > 0 THEN ''   ELSE '--' END ACCOUNT_STATUS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOCK_DATE                  ')) > 0 THEN ''   ELSE '--' END LOCK_DATE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXPIRY_DATE                ')) > 0 THEN ''   ELSE '--' END EXPIRY_DATE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEFAULT_TABLESPACE         ')) > 0 THEN ''   ELSE '--' END DEFAULT_TABLESPACE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('TEMPORARY_TABLESPACE       ')) > 0 THEN ''   ELSE '--' END TEMPORARY_TABLESPACE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LOCAL_TEMP_TABLESPACE      ')) > 0 THEN ''   ELSE '--' END LOCAL_TEMP_TABLESPACE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('CREATED                    ')) > 0 THEN ''   ELSE '--' END CREATED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PROFILE                    ')) > 0 THEN ''   ELSE '--' END PROFILE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INITIAL_RSRC_CONSUMER_GROUP')) > 0 THEN ''   ELSE '--' END INITIAL_RSRC_CONSUMER_GROUP
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EXTERNAL_NAME              ')) > 0 THEN ''   ELSE '--' END EXTERNAL_NAME
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PASSWORD_VERSIONS          ')) > 0 THEN ''   ELSE '--' END PASSWORD_VERSIONS
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('EDITIONS_ENABLED           ')) > 0 THEN ''   ELSE '--' END EDITIONS_ENABLED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('AUTHENTICATION_TYPE        ')) > 0 THEN ''   ELSE '--' END AUTHENTICATION_TYPE
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('PROXY_ONLY_CONNECT         ')) > 0 THEN ''   ELSE '--' END PROXY_ONLY_CONNECT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('COMMON                     ')) > 0 THEN ''   ELSE '--' END COMMON
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('LAST_LOGIN                 ')) > 0 THEN ''   ELSE '--' END LAST_LOGIN
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ORACLE_MAINTAINED          ')) > 0 THEN ''   ELSE '--' END ORACLE_MAINTAINED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('INHERITED                  ')) > 0 THEN ''   ELSE '--' END INHERITED
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('DEFAULT_COLLATION          ')) > 0 THEN ''   ELSE '--' END DEFAULT_COLLATION
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('IMPLICIT                   ')) > 0 THEN ''   ELSE '--' END IMPLICIT
-,CASE WHEN '&columns_' = '*' OR INSTR(UPPER('&columns_'),TRIM('ALL_SHARD                  ')) > 0 THEN ''   ELSE '--' END ALL_SHARD
-,CASE WHEN '&columns_' = '*'                                                                      THEN '--' ELSE ''   END ORDENAR
-FROM dual
-;
-
-set term on
-
-CLEAR BREAKS
-CLEAR COLUMNS
-
-COL info FOR A80
-
-COL USERNAME                    NOPRINT
-COL USER_ID                     NOPRINT
-COL PASSWORD                    NOPRINT
-COL ACCOUNT_STATUS              NOPRINT
-COL LOCK_DATE                   NOPRINT
-COL EXPIRY_DATE                 NOPRINT
-COL DEFAULT_TABLESPACE          NOPRINT
-COL TEMPORARY_TABLESPACE        NOPRINT
-COL LOCAL_TEMP_TABLESPACE       NOPRINT
-COL CREATED                     NOPRINT
-COL PROFILE                     NOPRINT
-COL INITIAL_RSRC_CONSUMER_GROUP NOPRINT
-COL EXTERNAL_NAME               NOPRINT
-COL PASSWORD_VERSIONS           NOPRINT
-COL EDITIONS_ENABLED            NOPRINT
-COL AUTHENTICATION_TYPE         NOPRINT
-COL PROXY_ONLY_CONNECT          NOPRINT
-COL COMMON                      NOPRINT
-COL LAST_LOGIN                  NOPRINT
-COL ORACLE_MAINTAINED           NOPRINT
-COL INHERITED                   NOPRINT
-COL DEFAULT_COLLATION           NOPRINT
-COL IMPLICIT                    NOPRINT
-COL ALL_SHARD                   NOPRINT
-
-SELECT ROWNUM, users.*
-FROM (
-SELECT                                  ''
-&ge_90_  &USERNAME_                    ||LPAD(TRIM('USERNAME                   '),27,' ')||' : '||USERNAME                   ||CHR(10)
-&ge_90_  &USER_ID_                     ||LPAD(TRIM('USER_ID                    '),27,' ')||' : '||USER_ID                    ||CHR(10)
-&ge_90_  &PASSWORD_                    ||LPAD(TRIM('PASSWORD                   '),27,' ')||' : '||PASSWORD                   ||CHR(10)
-&ge_90_  &ACCOUNT_STATUS_              ||LPAD(TRIM('ACCOUNT_STATUS             '),27,' ')||' : '||ACCOUNT_STATUS             ||CHR(10)
-&ge_90_  &LOCK_DATE_                   ||LPAD(TRIM('LOCK_DATE                  '),27,' ')||' : '||TO_CHAR(LOCK_DATE,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_90_  &EXPIRY_DATE_                 ||LPAD(TRIM('EXPIRY_DATE                '),27,' ')||' : '||TO_CHAR(EXPIRY_DATE,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_90_  &DEFAULT_TABLESPACE_          ||LPAD(TRIM('DEFAULT_TABLESPACE         '),27,' ')||' : '||DEFAULT_TABLESPACE         ||CHR(10)
-&ge_90_  &TEMPORARY_TABLESPACE_        ||LPAD(TRIM('TEMPORARY_TABLESPACE       '),27,' ')||' : '||TEMPORARY_TABLESPACE       ||CHR(10)
-&ge_122_ &LOCAL_TEMP_TABLESPACE_       ||LPAD(TRIM('LOCAL_TEMP_TABLESPACE      '),27,' ')||' : '||LOCAL_TEMP_TABLESPACE      ||CHR(10)
-&ge_90_  &CREATED_                     ||LPAD(TRIM('CREATED                    '),27,' ')||' : '||TO_CHAR(CREATED,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_90_  &PROFILE_                     ||LPAD(TRIM('PROFILE                    '),27,' ')||' : '||PROFILE                    ||CHR(10)
-&ge_90_  &INITIAL_RSRC_CONSUMER_GROUP_ ||LPAD(TRIM('INITIAL_RSRC_CONSUMER_GROUP'),27,' ')||' : '||INITIAL_RSRC_CONSUMER_GROUP||CHR(10)
-&ge_90_  &EXTERNAL_NAME_               ||LPAD(TRIM('EXTERNAL_NAME              '),27,' ')||' : '||EXTERNAL_NAME              ||CHR(10)
-&ge_90_  &PASSWORD_VERSIONS_           ||LPAD(TRIM('PASSWORD_VERSIONS          '),27,' ')||' : '||PASSWORD_VERSIONS          ||CHR(10)
-&ge_90_  &EDITIONS_ENABLED_            ||LPAD(TRIM('EDITIONS_ENABLED           '),27,' ')||' : '||EDITIONS_ENABLED           ||CHR(10)
-&ge_112_ &AUTHENTICATION_TYPE_         ||LPAD(TRIM('AUTHENTICATION_TYPE        '),27,' ')||' : '||AUTHENTICATION_TYPE        ||CHR(10)
-&ge_121_ &PROXY_ONLY_CONNECT_          ||LPAD(TRIM('PROXY_ONLY_CONNECT         '),27,' ')||' : '||PROXY_ONLY_CONNECT         ||CHR(10)
-&ge_121_ &COMMON_                      ||LPAD(TRIM('COMMON                     '),27,' ')||' : '||COMMON                     ||CHR(10)
-&ge_121_ &LAST_LOGIN_                  ||LPAD(TRIM('LAST_LOGIN                 '),27,' ')||' : '||TO_CHAR(LAST_LOGIN,'YYYY-MM-DD HH24:MI:SS')||CHR(10)
-&ge_121_ &ORACLE_MAINTAINED_           ||LPAD(TRIM('ORACLE_MAINTAINED          '),27,' ')||' : '||ORACLE_MAINTAINED          ||CHR(10)
-&ge_122_ &INHERITED_                   ||LPAD(TRIM('INHERITED                  '),27,' ')||' : '||INHERITED                  ||CHR(10)
-&ge_122_ &DEFAULT_COLLATION_           ||LPAD(TRIM('DEFAULT_COLLATION          '),27,' ')||' : '||DEFAULT_COLLATION          ||CHR(10)
-&ge_122_ &IMPLICIT_                    ||LPAD(TRIM('IMPLICIT                   '),27,' ')||' : '||IMPLICIT                   ||CHR(10)
-&ge_122_ &ALL_SHARD_                   ||LPAD(TRIM('ALL_SHARD                  '),27,' ')||' : '||ALL_SHARD                  ||CHR(10)
-info
-&ge_90_  &USERNAME_                    ,USERNAME
-&ge_90_  &USER_ID_                     ,USER_ID
-&ge_90_  &PASSWORD_                    ,PASSWORD
-&ge_90_  &ACCOUNT_STATUS_              ,ACCOUNT_STATUS
-&ge_90_  &LOCK_DATE_                   ,LOCK_DATE
-&ge_90_  &EXPIRY_DATE_                 ,EXPIRY_DATE
-&ge_90_  &DEFAULT_TABLESPACE_          ,DEFAULT_TABLESPACE
-&ge_90_  &TEMPORARY_TABLESPACE_        ,TEMPORARY_TABLESPACE
-&ge_122_ &LOCAL_TEMP_TABLESPACE_       ,LOCAL_TEMP_TABLESPACE
-&ge_90_  &CREATED_                     ,CREATED
-&ge_90_  &PROFILE_                     ,PROFILE
-&ge_90_  &INITIAL_RSRC_CONSUMER_GROUP_ ,INITIAL_RSRC_CONSUMER_GROUP
-&ge_90_  &EXTERNAL_NAME_               ,EXTERNAL_NAME
-&ge_90_  &PASSWORD_VERSIONS_           ,PASSWORD_VERSIONS
-&ge_90_  &EDITIONS_ENABLED_            ,EDITIONS_ENABLED
-&ge_112_ &AUTHENTICATION_TYPE_         ,AUTHENTICATION_TYPE
-&ge_121_ &PROXY_ONLY_CONNECT_          ,PROXY_ONLY_CONNECT
-&ge_121_ &COMMON_                      ,COMMON
-&ge_121_ &LAST_LOGIN_                  ,LAST_LOGIN
-&ge_121_ &ORACLE_MAINTAINED_           ,ORACLE_MAINTAINED
-&ge_122_ &INHERITED_                   ,INHERITED
-&ge_122_ &DEFAULT_COLLATION_           ,DEFAULT_COLLATION
-&ge_122_ &IMPLICIT_                    ,IMPLICIT
-&ge_122_ &ALL_SHARD_                   ,ALL_SHARD
-FROM dba_users
-WHERE &where_
-&ORDENAR_ ORDER BY &columns_
-) users
-;
-
-CLEAR BREAKS
-CLEAR COLUMNS
 LINEAS_CODIGO
 
 ##
@@ -5751,45 +4231,88 @@ LINEAS_CODIGO
 
 cat > tdisco.sql <<'LINEAS_CODIGO'
 set lines 200
-col begin_time for a25 heading "Fecha|Inicio"
-col max_read_avg   for a20 heading "Promedio|Maximo|Lectura"
-col min_read_avg   for a20 heading "Promedio|Minimo|Lectura"
-col avg_read_time  for a20 heading "Promedio|Tiempo|Lectura"
-col max_write_avg  for a20 heading "Promedio|Maximo|Escritura"
-col min_write_avg  for a20 heading "Promedio|Minimo|Escritura"
-col avg_write_time for a20 heading "Promedio|Tiempo|Escritura"
+col begin_time     for a25 heading "Fecha|Inicio"
+col max_read_avg   for a12 heading "Promedio|Maximo|Lectura"
+col min_read_avg   for a12 heading "Promedio|Minimo|Lectura"
+col avg_read_time  for a12 heading "Promedio|Tiempo|Lectura"
+col max_write_avg  for a12 heading "Promedio|Maximo|Escritura"
+col min_write_avg  for a12 heading "Promedio|Minimo|Escritura"
+col avg_write_time for a12 heading "Promedio|Tiempo|Escritura"
 
 --Las metricas que da Oracle son en Centesimas de segundo
 SELECT
    to_char(begin_time,'yyyy-mm-dd hh24:mi:ss') begin_time
-  ,case when max(average_read_time) <         100 then to_char(max(average_read_time),'9G990D99')||' cs'
-        when max(average_read_time) <    (100*60) then to_char(max(average_read_time),'9G990D99')||' s'
-        when max(average_read_time) < (100*60*60) then to_char(max(average_read_time),'9G990D99')||' min' 
-   end max_read_avg
-  ,case when min(average_read_time) <         100 then to_char(min(average_read_time),'9G990D99')||' cs'
-        when min(average_read_time) <    (100*60) then to_char(min(average_read_time),'9G990D99')||' s'
-        when min(average_read_time) < (100*60*60) then to_char(min(average_read_time),'9G990D99')||' min' 
-   end min_read_avg
-  ,case when avg(average_read_time) <         100 then to_char(avg(average_read_time),'9G990D99')||' cs'
-        when avg(average_read_time) <    (100*60) then to_char(avg(average_read_time),'9G990D99')||' s'
-        when avg(average_read_time) < (100*60*60) then to_char(avg(average_read_time),'9G990D99')||' min' 
-   end avg_read_time
-  ,case when max(average_write_time) <         100 then to_char(max(average_write_time),'9G990D99')||' cs'
-        when max(average_write_time) <    (100*60) then to_char(max(average_write_time),'9G990D99')||' s'
-        when max(average_write_time) < (100*60*60) then to_char(max(average_write_time),'9G990D99')||' min' 
-   end max_write_avg
-  ,case when min(average_write_time) <         100 then to_char(min(average_write_time),'9G990D99')||' cs'
-        when min(average_write_time) <    (100*60) then to_char(min(average_write_time),'9G990D99')||' s'
-        when min(average_write_time) < (100*60*60) then to_char(min(average_write_time),'9G990D99')||' min' 
-   end min_write_avg
-  ,case when avg(average_write_time) <         100 then to_char(avg(average_write_time),'9G990D99')||' cs'
-        when avg(average_write_time) <    (100*60) then to_char(avg(average_write_time),'9G990D99')||' s'
-        when avg(average_write_time) < (100*60*60) then to_char(avg(average_write_time),'9G990D99')||' min' 
-   end avg_write_time
+  ,lpad(case when max(average_read_time)  < (         100) then to_char(max(average_read_time)            ,'9G990D99')||'c'
+        when max(average_read_time)       < (      100*60) then to_char(max(average_read_time/(100))      ,'9G990D99')||'s'
+        when max(average_read_time)       < (   100*60*60) then to_char(max(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_read_time)       < (100*60*60*60) then to_char(max(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_read_avg
+  ,lpad(case when min(average_read_time)  < (         100) then to_char(min(average_read_time)            ,'9G990D99')||'c'
+        when min(average_read_time)       < (      100*60) then to_char(min(average_read_time/(100))      ,'9G990D99')||'s'
+        when min(average_read_time)       < (   100*60*60) then to_char(min(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_read_time)       < (100*60*60*60) then to_char(min(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_read_avg
+  ,lpad(case when avg(average_read_time)  < (         100) then to_char(avg(average_read_time)            ,'9G990D99')||'c'
+        when avg(average_read_time)       < (      100*60) then to_char(avg(average_read_time/(100))      ,'9G990D99')||'s'
+        when avg(average_read_time)       < (   100*60*60) then to_char(avg(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_read_time)       < (100*60*60*60) then to_char(avg(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_read_time
+  ,lpad(case when max(average_write_time) < (         100) then to_char(max(average_write_time)            ,'9G990D99')||'c'
+        when max(average_write_time)      < (      100*60) then to_char(max(average_write_time/(100))      ,'9G990D99')||'s'
+        when max(average_write_time)      < (   100*60*60) then to_char(max(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_write_time)      < (100*60*60*60) then to_char(max(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_write_avg
+  ,lpad(case when min(average_write_time) < (         100) then to_char(min(average_write_time)            ,'9G990D99')||'c'
+        when min(average_write_time)      < (      100*60) then to_char(min(average_write_time/(100))      ,'9G990D99')||'s'
+        when min(average_write_time)      < (   100*60*60) then to_char(min(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_write_time)      < (100*60*60*60) then to_char(min(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_write_avg
+  ,lpad(case when avg(average_write_time) < (         100) then to_char(avg(average_write_time)            ,'9G990D99')||'c'
+        when avg(average_write_time)      < (      100*60) then to_char(avg(average_write_time/(100))      ,'9G990D99')||'s'
+        when avg(average_write_time)      < (   100*60*60) then to_char(avg(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_write_time)      < (100*60*60*60) then to_char(avg(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_write_time
 FROM v$filemetric_history
 GROUP BY
    begin_time
   ,end_time
 ORDER BY 1
 ;
+LINEAS_CODIGO
+
+
+cat > rmanb.sql <<'LINEAS_CODIGO'
+SET LINES 200
+SET PAGES 1000
+COL start_time  FOR A22
+COL end_time    FOR A22
+COL input_size  FOR A15
+COL output_size FOR A15
+COL status      FOR A25
+
+SELECT
+  TO_CHAR(start_time,'YYYY-MON-DD HH24:MI:SS') start_time
+ ,TO_CHAR(end_time  ,'YYYY-MON-DD HH24:MI:SS') end_time
+ ,LPAD(CASE WHEN input_bytes < 1024     THEN TO_CHAR(input_bytes                       ,'9G990D9')||'B'
+       WHEN input_bytes < POWER(1024,2) THEN TO_CHAR(TRUNC(input_bytes/POWER(1024,1),1),'9G990D9')||'K'
+       WHEN input_bytes < POWER(1024,3) THEN TO_CHAR(TRUNC(input_bytes/POWER(1024,2),1),'9G990D9')||'M'
+       WHEN input_bytes < POWER(1024,4) THEN TO_CHAR(TRUNC(input_bytes/POWER(1024,3),1),'9G990D9')||'G'
+       WHEN input_bytes < POWER(1024,5) THEN TO_CHAR(TRUNC(input_bytes/POWER(1024,4),1),'9G990D9')||'T'
+  END
+  ,15,' ') input_size
+ ,LPAD(CASE WHEN output_bytes < 1024     THEN TO_CHAR(output_bytes                       ,'9G990D9')||'B'
+       WHEN output_bytes < POWER(1024,2) THEN TO_CHAR(TRUNC(output_bytes/POWER(1024,1),1),'9G990D9')||'K'
+       WHEN output_bytes < POWER(1024,3) THEN TO_CHAR(TRUNC(output_bytes/POWER(1024,2),1),'9G990D9')||'M'
+       WHEN output_bytes < POWER(1024,4) THEN TO_CHAR(TRUNC(output_bytes/POWER(1024,3),1),'9G990D9')||'G'
+       WHEN output_bytes < POWER(1024,5) THEN TO_CHAR(TRUNC(output_bytes/POWER(1024,4),1),'9G990D9')||'T'
+  END
+  ,15,' ') output_size
+ ,input_type
+ ,TO_CHAR(CAST(NUMTODSINTERVAL(elapsed_seconds, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) elapsed_time
+ ,status
+FROM v$rman_backup_job_details
+WHERE start_time > TRUNC(SYSDATE)-60
+AND input_type in ('DB FULL','DB INCR','ARCHIVELOG')
+;
+
 LINEAS_CODIGO

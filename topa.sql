@@ -535,92 +535,127 @@ SELECT * FROM v$resource_limit;
 SET ECHO OFF
 PROMPT
 PROMPT
-PROMPT ==================== [ Lock tree ] ====================
+PROMPT ==================== [ Lock Summary ] ====================
 PROMPT
 
-SET LINES 200
-SET PAGES 1000
-SET RECSEP OFF
-
-CLEAR COLUMNS
 CLEAR BREAKS
+CLEAR COLUMNS
 
-COLUMN chain_id NOPRINT
-COLUMN N NOPRINT
-COLUMN l NOPRINT
-COLUMN root NOPRINT
+SET LINES 200
+SET PAGES 10000
+COL event_blocker_blocked FOR A35
+COL username_sid_serial   FOR A30
+COL machine        FOR A25 TRUNC
+COL program        FOR A15 TRUNC
+COL sqlid_child    FOR A16
+COL cnt            FOR 999
+COL max_time       FOR A12
 
-COLUMN event            FOR A40 WORD_WRAP
-COLUMN waiting_active   FOR A25
-COLUMN graph FORMAT A10
-COLUMN identifier       FOR A17
-COLUMN username         FOR A15
-COLUMN osuser           FOR A10
-COLUMN machine          FOR A25
-COLUMN program          FOR A15 TRUNC
-
-
-BREAK ON root SKIP 3
-COMPUTE COUNT LABEL 'Total' OF root ON root
-
-WITH
-w AS
-(
- SELECT chain_id
-   ,ROWNUM n
-   ,LEVEL l
-   ,CONNECT_BY_ROOT w.sid root
-   --
-   --
-   ,LPAD(' ',LEVEL,' ')
-   ||'> '||w.wait_event_text
-   ||' '
-   ||s.sql_id
-   ||CASE WHEN w.wait_event_text LIKE 'enq: TM%'
-  THEN ' mode '
- ||DECODE(w.p1 ,1414332418,'Row-S' ,1414332419,'Row-X' ,1414332420,'Share' ,1414332421,'Share RX' ,1414332422,'eXclusive')
- ||( SELECT ' '||object_type||' "'||owner||'"."'||object_name||'" ' FROM all_objects WHERE object_id=w.p2 )
-  WHEN w.wait_event_text LIKE 'enq: TX%'
-  THEN (SELECT ' '
- ||object_type
- ||' "'||owner||'"."'||object_name||'"'
- ||' '
- ||dbms_rowid.rowid_create(1,data_object_id,relative_fno,w.row_wait_block#,w.row_wait_row#)
-FROM all_objects, dba_data_files
-WHERE object_id = w.row_wait_obj# AND w.row_wait_file# = file_id
-)
- END event
-   ,TO_CHAR(CAST(numtodsinterval(w.in_wait_secs, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0)))
-   ||' '
-   ||TO_CHAR(CAST(numtodsinterval(s.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0)))
-   waiting_active
-   ,LPAD('+',LEVEL,'+')||NVL(LEVEL,1) graph
-  ,s.sid||','||s.serial#||'@'||s.inst_id identifier
-  ,NVL(s.username,'-|'||p.pname||'|-') username
-  ,s.osuser
-  ,CASE WHEN INSTR(s.machine,'.') > 0
-THEN SUBSTR(s.machine,1,INSTR(s.machine,'.'))
-ELSE s.machine
-END machine
-  ,CASE WHEN INSTR(s.program,'@') > 0
-THEN SUBSTR(s.program,1,INSTR(s.program,'@')-1)
-ELSE s.program
-   END
-   ||
-   CASE WHEN INSTR(s.program,')') > 0
-THEN SUBSTR(s.program,INSTR(s.program,'('),INSTR(s.program,')')-INSTR(s.program,'(')+1)
-ELSE ''
-   END program
- FROM v$wait_chains w JOIN gv$session s ON (s.sid = w.sid AND s.serial# = w.sess_serial# AND s.inst_id = w.instance)
-   JOIN gv$process p ON (s.inst_id = p.inst_id AND s.paddr = p.addr)
- CONNECT BY PRIOR w.sid = w.blocker_sid AND PRIOR w.sess_serial# = w.blocker_sess_serial# AND PRIOR w.instance = w.blocker_instance
- START WITH w.blocker_sid IS NULL
-)
-SELECT *
-FROM w
-WHERE chain_id IN (SELECT chain_id FROM w GROUP BY chain_id HAVING MAX(waiting_active) >= '+00 00:00:10' AND MAX(l) > 1 )
-ORDER BY root, graph DESC, waiting_active DESC
+WITH curr_session AS (SELECT * FROM v$session)
+SELECT
+       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
+      ,bl.max_blocked cnt
+      ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
+      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
+      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
+      ,se.program
+      ,se.machine
+FROM curr_session se
+    ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
+      FROM curr_session c group by c.blocking_session, c.event) bl
+WHERE se.sid  = bl.sid
+ORDER BY max_time, max_blocked
 ;
 
-SET RECSEP WR
+SET ECHO OFF
+PROMPT
+PROMPT
+PROMPT ==================== [ File Metric History ] ====================
+PROMPT
+
+CLEAR BREAKS
+CLEAR COLUMNS
+
+set lines 200
+col begin_time     for a25 heading "Fecha|Inicio"
+col max_read_avg   for a12 heading "Promedio|Maximo|Lectura"
+col min_read_avg   for a12 heading "Promedio|Minimo|Lectura"
+col avg_read_time  for a12 heading "Promedio|Tiempo|Lectura"
+col max_write_avg  for a12 heading "Promedio|Maximo|Escritura"
+col min_write_avg  for a12 heading "Promedio|Minimo|Escritura"
+col avg_write_time for a12 heading "Promedio|Tiempo|Escritura"
+
+--Las metricas que da Oracle son en Centesimas de segundo
+SELECT
+   to_char(begin_time,'yyyy-mm-dd hh24:mi:ss') begin_time
+  ,lpad(case when max(average_read_time)  < (         100) then to_char(max(average_read_time)            ,'9G990D99')||'c'
+        when max(average_read_time)       < (      100*60) then to_char(max(average_read_time/(100))      ,'9G990D99')||'s'
+        when max(average_read_time)       < (   100*60*60) then to_char(max(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_read_time)       < (100*60*60*60) then to_char(max(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_read_avg
+  ,lpad(case when min(average_read_time)  < (         100) then to_char(min(average_read_time)            ,'9G990D99')||'c'
+        when min(average_read_time)       < (      100*60) then to_char(min(average_read_time/(100))      ,'9G990D99')||'s'
+        when min(average_read_time)       < (   100*60*60) then to_char(min(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_read_time)       < (100*60*60*60) then to_char(min(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_read_avg
+  ,lpad(case when avg(average_read_time)  < (         100) then to_char(avg(average_read_time)            ,'9G990D99')||'c'
+        when avg(average_read_time)       < (      100*60) then to_char(avg(average_read_time/(100))      ,'9G990D99')||'s'
+        when avg(average_read_time)       < (   100*60*60) then to_char(avg(average_read_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_read_time)       < (100*60*60*60) then to_char(avg(average_read_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_read_time
+  ,lpad(case when max(average_write_time) < (         100) then to_char(max(average_write_time)            ,'9G990D99')||'c'
+        when max(average_write_time)      < (      100*60) then to_char(max(average_write_time/(100))      ,'9G990D99')||'s'
+        when max(average_write_time)      < (   100*60*60) then to_char(max(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when max(average_write_time)      < (100*60*60*60) then to_char(max(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') max_write_avg
+  ,lpad(case when min(average_write_time) < (         100) then to_char(min(average_write_time)            ,'9G990D99')||'c'
+        when min(average_write_time)      < (      100*60) then to_char(min(average_write_time/(100))      ,'9G990D99')||'s'
+        when min(average_write_time)      < (   100*60*60) then to_char(min(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when min(average_write_time)      < (100*60*60*60) then to_char(min(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') min_write_avg
+  ,lpad(case when avg(average_write_time) < (         100) then to_char(avg(average_write_time)            ,'9G990D99')||'c'
+        when avg(average_write_time)      < (      100*60) then to_char(avg(average_write_time/(100))      ,'9G990D99')||'s'
+        when avg(average_write_time)      < (   100*60*60) then to_char(avg(average_write_time/(100*60))   ,'9G990D99')||'m'
+        when avg(average_write_time)      < (100*60*60*60) then to_char(avg(average_write_time/(100*60*60)),'9G990D99')||'h'
+   end,12,' ') avg_write_time
+FROM v$filemetric_history
+GROUP BY
+   begin_time
+  ,end_time
+ORDER BY 1
+;
+
+
+PROMPT
+PROMPT
+PROMPT ==================== [ Existencia de Backups ] ====================
+PROMPT
+
+CLEAR BREAKS
+CLEAR COLUMNS
+
+set lines 200
+
+col logn_time for a25
+col sid_serial for a20
+col username for a20
+col backup_type for a15
+col job_name for a30
+
+select
+   to_char(s.logon_time,'yyyy-mm-dd hh24:mi:ss') logon_time
+  ,s.status
+  ,s.username
+  ,s.sid||','||s.serial# sid_serial
+  ,case when s.program like 'rman%'                       then 'RMAN'
+        when s.program like 'ude%' or s.program like '%DM%' or s.program like '%DW%' then 'DATAPUMP'
+        else '-'
+   end backup_type
+  ,dps.job_name job_name
+from v$session s, dba_datapump_sessions dps
+where (program like 'rman%' or program like 'ude%' or program like '%DM%' or program like '%DW%')
+   and dps.saddr(+) = s.saddr
+order by backup_type, logon_time
+;
 

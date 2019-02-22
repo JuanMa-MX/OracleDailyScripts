@@ -16,16 +16,15 @@ SELECT
        TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
       ,bl.max_blocked cnt
       ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
-      ,RPAD(NVL(se.username,pr.pname),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
+      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
        RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
       ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
       ,se.program
       ,se.machine
-FROM curr_session se, v$process pr
+FROM curr_session se
     ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
       FROM curr_session c group by c.blocking_session, c.event) bl
-WHERE pr.addr = se.paddr
-  AND se.sid  = bl.sid
+WHERE se.sid  = bl.sid
 ORDER BY max_time, max_blocked
 ;
 
