@@ -8,7 +8,7 @@
 #
 # Won't configure this script if either Oracle RAC or Oracle Restart is configured.
 #
-# Standard and Error Output is redirected to .log file
+# Standard and Error Output are redirected to .log file
 # In order to Debug the Script, you can use .debug file
 #
 # By: Juan Manuel Cruz Lopez (johnxjean)
@@ -19,13 +19,13 @@
 #
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin";
 
-          ORATAB="/etc/oratab";
-   ORACLE_SERVER="$( hostname -s   )";
-SCRIPT_DIRECTORY="$( dirname  ${0} )";
-     SCRIPT_NAME="$( basename ${0} )";
+readonly           ORATAB="/etc/oratab";
+readonly    ORACLE_SERVER="$( hostname -s   )";
+readonly SCRIPT_DIRECTORY="$( dirname  ${0} )";
+readonly      SCRIPT_NAME="$( basename ${0} )";
 
-export    DEBUG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.debug";
-export      LOG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.log";
+export DEBUG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.debug";
+export   LOG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.log";
 
 #--------------------------------------------------------------------------------#
 
