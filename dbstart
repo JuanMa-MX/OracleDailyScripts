@@ -1,250 +1,365 @@
 #!/bin/bash
 
 #--------------------------------------------------------------------------------#
+#
+# Script that Starts all Oracle Databases and Listeners after Server Reboot.
+# To be Started, desired Oracle Database must be properly configured on oratab file.
+# If Database has PHYSICAL STANDBY Role, also Activates Media Recovery.
+#
+# Won't configure this script if either Oracle RAC or Oracle Restart is configured.
+#
+# Standard and Error Output is redirected to .log file
+# In order to Debug the Script, you can use .debug file
+#
+# By: Juan Manuel Cruz Lopez (johnxjean)
+#--------------------------------------------------------------------------------#
 
-function obtenerListadoDeBasesDeDatos()
+#
+# Global variables
+#
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin";
+
+          ORATAB="/etc/oratab";
+   ORACLE_SERVER="$( hostname -s   )";
+SCRIPT_DIRECTORY="$( dirname  ${0} )";
+     SCRIPT_NAME="$( basename ${0} )";
+
+export    DEBUG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.debug";
+export      LOG="${SCRIPT_DIRECTORY}/${ORACLE_SERVER}-${SCRIPT_NAME}.log";
+
+#--------------------------------------------------------------------------------#
+
+function f_to_upper()
 {
-   listaDeBases=$(grep -Ev "^$|#" ${ORATAB} | grep ".*:.*:Y$" | cut -d":" -f1 | xargs);
-   echo ${listaDeBases};
+   # Transforms input string to upper case and prints it back
+   echo "${1}" | awk '{print toupper($0)}';
 }
 
 #--------------------------------------------------------------------------------#
 
-function ORAENV()
+function f_print()
 {
+   # Prints a user massage
+
+   local   mdate="$( date +"%Y-%m-%dT%H:%M:%S" )";
+   local   mtype="$( f_to_upper "${1}" )";
+   local message="${2}";
+
+   case "${mtype}" in
+      "INFO"   ) mtype="[ INFO    ]";;
+      "OK"     ) mtype="[ OK      ]";;
+      "WARNING") mtype="[ WARNING ]";;
+      "ERROR"  ) mtype="[ ERROR   ]";;
+      "FATAL"  ) mtype="[ FATAL   ]";;
+      "BEGIN"  ) mtype="[ BEGIN   ]";;
+      "END"    ) mtype="[ END     ]";;
+      *        ) mtype="[    -    ]";;
+   esac
+
+   echo "${mdate}${mtype} ${message}";
+}
+
+#--------------------------------------------------------------------------------#
+
+function f_get_database_list_from_oratab()
+{
+   # Returns all Database Instances configured in oratab file
+
+   # Reads all oratab file lines
+   # Ignores All empty lines
+   # Ignores All lines with #
+   # Retrieves those lines with Y
+   # Using : as a delimiter, returns all first element
+   local DATABASE_LIST=$(grep -Ev "^$|#" ${ORATAB} | grep ".*:.*:Y$" | \
+                         cut -d":" -f1 | xargs);
+
+   echo "${DATABASE_LIST}";
+}
+
+#--------------------------------------------------------------------------------#
+
+function f_oraenv()
+{
+   # Configures all Oracle Enviroment using oraenv utility
+
    export ORACLE_SID="${1}";
    export ORAENV_ASK="NO";
+
    . oraenv -s &> /dev/null;
-   export ORAENV_ASK="YES";
+
+   export      ORAENV_ASK="YES";
    export LD_LIBRARY_PATH=${ORACLE_HOME}/lib;
-   export TNS_ADMIN=${ORACLE_HOME}/network/admin;
+   export       TNS_ADMIN=${ORACLE_HOME}/network/admin;
+
+   f_print "INFO" "Current Environment:"     &>>${DEBUG};
+
+   env | grep -E "ORACLE|LIBRARY|TNS" | sort &>>${DEBUG};
 }
 
 #--------------------------------------------------------------------------------#
 
-function obtenerEstadoDeBaseDeDatos()
+function f_get_instance_status()
 {
-   ESTADO=$(sqlplus -S / AS SYSDBA <<_script_
+   # Returns current Instance Status
+
+   local INSTANCE_STATUS=$(sqlplus -S / AS SYSDBA <<'EOF'
 SET FEEDBACK OFF
 SET PAGES 0
 SET HEADING OFF
 
-SELECT status FROM v\$instance;
+SELECT status FROM v$instance;
 
 EXIT;
-_script_
+EOF
 );
 
-   case "${ESTADO}" in
-   "STARTED"|"MOUNTED"|"OPEN")
-      echo "${ESTADO}";
-   ;;
-   *)
-      echo "UNKNOWN";
-   ;;
+   case "${INSTANCE_STATUS}" in
+      "STARTED"|"MOUNTED"|"OPEN") echo "${INSTANCE_STATUS}";;
+                               *) echo "UNKNOWN";;
    esac
 }
 
 #--------------------------------------------------------------------------------#
 
-function levantarEnModoMount()
+function f_startup_mount()
 {
-   sqlplus -S &> /dev/null <<_script_
+   # Puts Instance in Mount State
+
+   sqlplus -S &>>${DEBUG} <<'EOF'
 CONNECT / AS SYSDBA
 
 STARTUP MOUNT;
 
 EXIT;
-_script_
+EOF
 }
 
 #--------------------------------------------------------------------------------#
 
-function obtenerRolDeBaseDeDatos()
+function f_get_database_role()
 {
-   ROL=$(sqlplus -S / AS SYSDBA <<_script_
+   # Returns Database Role
+
+   local DATABASE_ROLE=$(sqlplus -S / AS SYSDBA <<'EOF'
 SET FEEDBACK OFF
 SET PAGES 0
 SET HEADING OFF
 
-SELECT database_role FROM v\$database;
+SELECT database_role FROM v$database;
 
 EXIT;
-_script_
+EOF
 );
 
-   case "${ROL}" in
-   "PRIMARY"|"LOGICAL STANDBY"|"PHYSICAL STANDBY")
-      echo "${ROL}";
-   ;;
-   *)
-      echo "UNKNOWN";
-   ;;
+   case "${DATABASE_ROLE}" in
+      "PRIMARY"|"LOGICAL STANDBY"|"PHYSICAL STANDBY") echo "${DATABASE_ROLE}";;
+                                                   *) echo "UNKNOWN";;
    esac
 }
 
 #--------------------------------------------------------------------------------#
 
-function abrirBaseDeDatos()
+function f_alter_database_open()
 {
-   sqlplus -S &> /dev/null <<_script_
+   # Puts Database in Open State
+
+   sqlplus -S &>>${DEBUG} <<'EOF'
 CONNECT / AS SYSDBA
 
 ALTER DATABASE OPEN;
 
 EXIT;
-_script_
+EOF
 }
 
 #--------------------------------------------------------------------------------#
 
-function activarRecuperacionDeBaseDeDatos()
+function f_activate_standby_media_recovery()
 {
-   sqlplus -S &> /dev/null <<_script_
+   # Activates Standby Database Media Recovery
+
+   sqlplus -S &>>${DEBUG} <<'EOF'
 CONNECT / AS SYSDBA
 
 ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT;
 
 EXIT;
-_script_
+EOF
 }
 
 #--------------------------------------------------------------------------------#
 
-function obtenerEstadoDeRecuperacion()
+function f_get_media_recovery_status()
 {
-   ESTADO=$(sqlplus -S / AS SYSDBA <<_script_
+   # Returns Standby Media Recovery Status
+
+   local MEDIA_RECOVERY_STATUS=$(sqlplus -S / AS SYSDBA <<'EOF'
 SET FEEDBACK OFF
 SET PAGES 0
 SET HEADING OFF
 
-SELECT 'ACTIVE' col FROM v\$managed_standby
+SELECT 'ACTIVE' col FROM v$managed_standby
 WHERE process LIKE 'MRP%'
 AND ROWNUM < 2;
 
 EXIT;
-_script_
+EOF
 );
 
-   case "${ESTADO}" in
-   "ACTIVE")
-      echo "${ESTADO}";
-   ;;
-   *)
-      echo "INACTIVE";
-   ;;
+   case "${MEDIA_RECOVERY_STATUS}" in
+      "ACTIVE") echo "${MEDIA_RECOVERY_STATUS}";;
+             *) echo "INACTIVE";;
    esac
 }
 
 #--------------------------------------------------------------------------------#
 
-function levantaBaseDeDatos()
+function f_start_databases()
 {
-   for base in $(obtenerListadoDeBasesDeDatos)
-   do
-      ORAENV "${base}";
-      levantarEnModoMount;
+   # Starts all Oracle Databases on Database Server if they are configured on oratab file
 
-      ESTADO="$(obtenerEstadoDeBaseDeDatos)";
+   local       INSTANCE_STATUS="";
+   local         DATABASE_ROLE="";
+   local MEDIA_RECOVERY_STATUS="";
 
-      case "${ESTADO}" in
-      "MOUNTED"|"OPEN")
-         echo "[OK] Base de Datos '${base}' montada correctamente.";
+   f_print "INFO" "Starting Up Oracle Databases..." | tee -a ${DEBUG};
+   f_print | tee -a ${DEBUG};
 
-         ROL="$(obtenerRolDeBaseDeDatos)";
-         echo "[INFO] Rol de Base De Datos '${ROL}' encontrado.";
+   for database in $(f_get_database_list_from_oratab); do
+      f_oraenv "${database}";
 
-         case "${ROL}" in
-         "PHYSICAL STANDBY")
-            activarRecuperacionDeBaseDeDatos;
+      f_print "INFO" "${database}:Starting Database..." | tee -a ${DEBUG};
 
-            ESTADO="$(obtenerEstadoDeRecuperacion)";
+      f_print "INFO" "${database}:Mounting database..." &>>${DEBUG};
 
-            if [ "${ESTADO}" == "ACTIVE" ];
-            then
-               echo "[OK] Recuperacion de Base de Datos '${base}' activa.";
-            else
-               echo "[ERROR] Recuperacion de Base de Datos '${base}' inactiva.";
-            fi
+      f_startup_mount;
+
+      INSTANCE_STATUS="$(f_get_instance_status)";
+
+      f_print "INFO" "${database}:Instance status ${INSTANCE_STATUS}" &>> ${DEBUG};
+
+      case "${INSTANCE_STATUS}" in
+         "MOUNTED"|"OPEN")
+            f_print "OK" "${database}:Database mounted." | tee -a ${DEBUG};
+
+            DATABASE_ROLE="$(f_get_database_role)";
+
+            f_print "INFO" "${database}:${DATABASE_ROLE} database role found." | tee -a ${DEBUG};
+
+            case "${DATABASE_ROLE}" in
+               "PHYSICAL STANDBY")
+                  f_print "INFO" "${database}:Activating Media Recovery..." | tee -a ${DEBUG};
+
+                  f_activate_standby_media_recovery;
+
+                  MEDIA_RECOVERY_STATUS="$(f_get_media_recovery_status)";
+
+                  if [[ "${MEDIA_RECOVERY_STATUS}" = "ACTIVE" ]]; then
+                     f_print "OK" "${database}:Media Recovery activated." | tee -a ${DEBUG};
+                  else
+                     f_print "ERROR" "${database}:Media Recovery could not be activated." | tee -a ${DEBUG};
+                  fi
+               ;;
+               *)
+                  if [[ "${INSTANCE_STATUS}" = "MOUNTED" ]]; then
+                     f_alter_database_open;
+
+                     INSTANCE_STATUS="$(f_get_instance_status)";
+
+                     if [[ "${INSTANCE_STATUS}" = "OPEN" ]]; then
+                        f_print "OK" "${database}:Database opened."  | tee -a ${DEBUG};
+                     else
+                        f_print "ERROR" "${database}:Database could not be opened." | tee -a ${DEBUG};
+                     fi
+                  else
+                     f_print "OK" "${database}:Database opened." | tee -a ${DEBUG};
+                  fi
+               ;;
+            esac
          ;;
          *)
-            if [ "${ESTADO}" == "MOUNTED" ];
-            then
-               abrirBaseDeDatos;
-               ESTADO="$(obtenerEstadoDeBaseDeDatos)";
-
-               if [ "${ESTADO}" == "OPEN" ];
-               then
-                  echo "[OK] Base de Datos '${base}' abierta correctamente.";
-               else
-                  echo "[ERROR] Error al abrir la Base de Datos '${base}'.";
-               fi
-            else
-               echo "[OK] Base de Datos '${base}' abierta correctamente.";
-            fi
+            f_print "ERROR" "${database}:Database could not be mounted." | tee -a ${DEBUG};
          ;;
-         esac
-      ;;
-      *)
-         echo "[ERROR] Error al montar la Base de Datos '${base}'.";
-      ;;
       esac
+      f_print | tee -a ${DEBUG};
    done
 }
 
 #--------------------------------------------------------------------------------#
 
-function obtenerListadoListeners()
+function f_get_listener_list_from_listener_dot_ora()
 {
-   LISTENER=${TNS_ADMIN}/listener.ora;
-   listaDeListeners=$(sed -e 's/=/\n/g' ${LISTENER} | sed -e 's/ //g' | \
-                      grep -i "^listener" | grep -iv ".log" | \
-                      grep -vw "LISTENER" | awk '{print toupper($0)}');
-   echo ${listaDeListeners};
+   # Returns all Listeners name configured on listener.ora file
+
+   local LISTENER_DOT_ORA="${TNS_ADMIN}/listener.ora";
+
+   # Reads all listeners configured in listener.ora file
+   # Replaces all = by \n
+   # Replaces space char by nothing
+   # Get all lines that start with listener word
+   # Ignores all lines that contain .log
+   # Ignore all lines that contain whole LISTENER word only
+   # Transform all lines from lower case to upper case
+   local LISTENER_LIST=$(sed -e 's/=/\n/g' ${LISTENER_DOT_ORA} | \
+                         sed -e 's/ //g' |                       \
+                         grep -i "^listener" | grep -iv ".log" | \
+                         grep -vw "LISTENER" | awk '{print toupper($0)}');
+
+   echo ${LISTENER_LIST};
 }
 
 #--------------------------------------------------------------------------------#
 
-function obtenerEstadoDeListener()
+function f_get_listener_status()
 {
-   if [ $(ps -ef | grep "tnslsnr" | grep -icw ${1}) -eq 1 ];
-   then
-      echo "ACTIVE";
-   else
-      echo "INACTIVE";
-   fi
+   # Returns Listener status for a give Listener name
+
+   local LISTENER_NAME="${1}";
+
+   # If at OS level there is one listener with ${LISTENER_NAME} name,
+   # NUMBER_OF_PROCESS will have 1, else will have 0
+   local NUMBER_OF_PROCESS="$(ps -ef | grep "tnslsnr" | grep -icw ${1})";
+
+   [[ ${NUMBER_OF_PROCESS} -eq 1 ]] && echo "ACTIVE" || echo "INACTIVE";
 }
 
 #--------------------------------------------------------------------------------#
 
-function levantaListener()
+function f_start_listener()
 {
-   lsnrctl start ${1} &> /dev/null
+   # Starts a given Listener
+   local LISTENER_NAME="${1}";
 
-   if [ "$(obtenerEstadoDeListener "${1}")" == "ACTIVE" ];
-   then
-      echo "OK";
-   else
-      echo "ERROR";
-   fi
+   lsnrctl start ${LISTENER_NAME} &>> ${DEBUG};
 }
 
 #--------------------------------------------------------------------------------#
 
-function levantaListeners()
+function f_start_listeners()
 {
-   for base in $(obtenerListadoDeBasesDeDatos)
-   do
-      ORAENV "${base}";
+   # Starts all listeners on Oracle Server for those databases configured on oratab file
 
-      for listener in $(obtenerListadoListeners)
-      do
-         if [ "$(levantaListener "${listener}")" == "OK" ];
-         then
-            echo "[OK] Listener '${listener}' activo correctamente.";
+   local LISTENER_STATUS="";
+
+   f_print "INFO" "Starting Up Oracle Listeners..." | tee -a ${DEBUG};
+   f_print | tee -a ${DEBUG};
+
+   for database in $(f_get_database_list_from_oratab); do
+      f_oraenv "${database}";
+
+      for listener in $(f_get_listener_list_from_listener_dot_ora); do
+         f_print "INFO" "${listener}:Starting Listener..." | tee -a ${DEBUG};
+
+         f_start_listener "${listener}";
+
+         LISTENER_STATUS="$(f_get_listener_status "${listener}")";
+
+         if [[ "${LISTENER_STATUS}" = "ACTIVE" ]]; then
+            f_print "OK" "${listener}:Listener started." | tee -a ${DEBUG};
          else
-            echo "[ERROR] Error al activar el Listener '${listener}'.";
+            f_print "ERROR" "${listener}:Listener could not be started." | tee -a ${DEBUG};
          fi
+         f_print | tee -a ${DEBUG};
       done
    done
 }
@@ -253,19 +368,22 @@ function levantaListeners()
 
 function main()
 {
-ORATAB="/etc/oratab";
+   # Main function
 
-echo "";
-echo "#--------------------------------------------------------------------------------#";
-date;
-echo "";
-echo ">> Bases de Datos";
-levantaBaseDeDatos;
-echo "";
-echo ">> Listeners";
-levantaListeners;
+   f_print | tee -a ${DEBUG};
+   f_print "BEGIN" "********************************************************************************" | \
+      tee -a ${DEBUG};
+
+   f_print | tee -a ${DEBUG};
+   f_start_databases;
+
+   f_print | tee -a ${DEBUG};
+   f_start_listeners;
+
+   f_print "END" "********************************************************************************" | \
+      tee -a ${DEBUG};
 }
 
 #--------------------------------------------------------------------------------#
 
-main;
+main 2>&1 | tee -a ${LOG};

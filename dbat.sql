@@ -11,6 +11,7 @@ set feedback off
 set pages 0
 set time off
 set timing off
+set echo off
 
 accept dba_table_ char default 'DBA_TABLES' -
 prompt 'Vista de DBA a consultar? [DBA_TABLES]: '

@@ -351,34 +351,35 @@ cat > sqls.sql <<'LINEAS_CODIGO'
 --        Creado: 10/07/2017
 --       Soporte: johnxjean@gmail.com
 
-CLEAR BREAKS
-CLEAR COLUMNS
+SET ECHO OFF
+PROMPT
+PROMPT
+PROMPT ==================== [ Conteo de Sesiones por sentencia SQL ] ====================
+PROMPT
 
 SET LINES 200
-SET PAGES 10000
-COL event_blocker_blocked FOR A35
-COL username_sid_serial   FOR A30
-COL machine        FOR A25 TRUNC
-COL program        FOR A15 TRUNC
-COL sqlid_child    FOR A16
-COL cnt            FOR 999
-COL max_time       FOR A12
+SET PAGES 1000
 
-WITH curr_session AS (SELECT * FROM v$session)
-SELECT
-       TO_CHAR (CAST (NUMTODSINTERVAL (bl.max_time, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) max_time
-      ,bl.max_blocked cnt
-      ,se.sql_id||' '||CASE WHEN se.sql_id IS NULL THEN NULL ELSE se.sql_child_number END sqlid_child
-      ,RPAD(NVL(se.username,'-|BGPROCESS|-'),(29-LENGTH(se.sid||','||se.serial#)),' ')||se.sid||','||se.serial#||CHR(10)||
-       RPAD(se.status                ,(29-12),' ')||TO_CHAR (CAST (NUMTODSINTERVAL (se.last_call_et, 'SECOND') AS INTERVAL DAY(2) TO SECOND(0))) username_sid_serial
-      ,'+'||se.event||CHR(10)||' -'||bl.event event_blocker_blocked
-      ,se.program
-      ,se.machine
-FROM curr_session se
-    ,(SELECT c.blocking_session sid, c.event, COUNT(*) max_blocked, max(seconds_in_wait) max_time
-      FROM curr_session c group by c.blocking_session, c.event) bl
-WHERE se.sid  = bl.sid
-ORDER BY max_time, max_blocked
+CLEAR COLUMNS
+CLEAR BREAKS
+
+COMPUTE SUM LABEL 'Total en Ejecucion' OF CONTEO ON REPORT
+BREAK ON REPORT
+
+COL sql_text FOR a60
+
+COL sql_id FOR A20
+COL count  FOR 999,990
+
+SELECT s.sql_id
+  ,COUNT(*) conteo
+  ,sqla.sql_text
+FROM gv$session s, v$sqlarea sqla
+WHERE s.state = 'WAITING'
+AND s.sql_id IS NOT NULL
+AND sqla.sql_id=s.sql_id
+GROUP BY s.sql_id, sqla.sql_text
+ORDER BY 2
 ;
 
 LINEAS_CODIGO
@@ -3936,6 +3937,7 @@ set feedback off
 set pages 0
 set time off
 set timing off
+set echo off
 
 accept dba_table_ char default 'DBA_TABLES' -
 prompt 'Vista de DBA a consultar? [DBA_TABLES]: '
@@ -4313,6 +4315,42 @@ SELECT
 FROM v$rman_backup_job_details
 WHERE start_time > TRUNC(SYSDATE)-60
 AND input_type in ('DB FULL','DB INCR','ARCHIVELOG')
+;
+
+LINEAS_CODIGO
+
+
+cat > backups.sql <<'LINEAS_CODIGO'
+PROMPT
+PROMPT
+PROMPT ==================== [ Existencia de Backups ] ====================
+PROMPT
+
+CLEAR BREAKS
+CLEAR COLUMNS
+
+set lines 200
+
+col logn_time for a25
+col sid_serial for a20
+col username for a20
+col backup_type for a15
+col job_name for a30
+
+select
+   to_char(s.logon_time,'yyyy-mm-dd hh24:mi:ss') logon_time
+  ,s.status
+  ,s.username
+  ,s.sid||','||s.serial# sid_serial
+  ,case when s.program like 'rman%'                       then 'RMAN'
+        when s.program like 'ude%' or s.program like '%DM%' or s.program like '%DW%' then 'DATAPUMP'
+        else '-'
+   end backup_type
+  ,dps.job_name job_name
+from v$session s, dba_datapump_sessions dps
+where (program like 'rman%' or program like 'ude%' or program like '%DM%' or program like '%DW%')
+   and dps.saddr(+) = s.saddr
+order by backup_type, logon_time
 ;
 
 LINEAS_CODIGO
