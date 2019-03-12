@@ -303,7 +303,7 @@ function f_get_listener_list_from_listener_dot_ora()
    local LISTENER_LIST=$(sed -e 's/=/\n/g' ${LISTENER_DOT_ORA} | \
                          sed -e 's/ //g' |                       \
                          grep -i "^listener" | grep -iv ".log" | \
-                         grep -vw "LISTENER" | awk '{print toupper($0)}');
+                         grep -ivw "listener" | awk '{print toupper($0)}');
 
    echo ${LISTENER_LIST};
 }
